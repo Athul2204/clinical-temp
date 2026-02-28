@@ -1,6 +1,8 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.core.exceptions import ValidationError
+from django.utils import timezone
+from datetime import date
 
 
 # =========================
@@ -16,11 +18,7 @@ class Role(models.Model):
         ("PHARMACIST", "Pharmacist"),
     ]
 
-    rolename = models.CharField(
-        max_length=50,
-        choices=ROLE_CHOICES,
-        unique=True
-    )
+    rolename = models.CharField(max_length=50, choices=ROLE_CHOICES, unique=True)
     description = models.TextField(blank=True)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -30,16 +28,12 @@ class Role(models.Model):
 
 
 # =========================
-# CUSTOM USER MODEL
+# CUSTOM USER
 # =========================
 
 class User(AbstractUser):
-    role = models.ForeignKey(
-        Role,
-        on_delete=models.PROTECT,
-        related_name="users"
-    )
-    is_active = models.BooleanField(default=True)
+    email = models.EmailField(unique=True)
+    role = models.ForeignKey(Role, on_delete=models.PROTECT, related_name="users")
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -47,126 +41,123 @@ class User(AbstractUser):
 
 
 # =========================
-# STAFF PROFILE (BASE TABLE)
+# STAFF PROFILE
 # =========================
 
 class StaffProfile(models.Model):
-    user = models.OneToOneField(
-        User,
-        on_delete=models.CASCADE,
-        related_name="staff_profile"
-    )
-    staff_code = models.CharField(max_length=20, unique=True)
-    first_name = models.CharField(max_length=100)
-    last_name = models.CharField(max_length=100, blank=True)
-    phone = models.CharField(max_length=15, blank=True)
-    salary = models.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        null=True,
-        blank=True
-    )
-    joined_date = models.DateField(null=True, blank=True)
+
+    ROLE_PREFIX = {
+        "DOCTOR": "DOC",
+        "RECEPTIONIST": "REC",
+        "LAB_TECH": "LAB",
+        "PHARMACIST": "PHM",
+    }
+
+    MINIMUM_AGE = {
+        "DOCTOR": 24,
+        "RECEPTIONIST": 21,
+        "LAB_TECH": 23,
+        "PHARMACIST": 23,
+    }
+
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="staff_profile")
+    staff_code = models.CharField(max_length=20, unique=True, editable=False)
+    phone = models.CharField(max_length=15)
+    date_of_birth = models.DateField()
+    salary = models.DecimalField(max_digits=10, decimal_places=2)
+    joined_date = models.DateField(auto_now_add=True)
     is_active = models.BooleanField(default=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+
+    def calculate_age(self):
+        today = date.today()
+        return today.year - self.date_of_birth.year - (
+            (today.month, today.day) < (self.date_of_birth.month, self.date_of_birth.day)
+        )
 
     def clean(self):
-        if not self.first_name:
-            raise ValidationError("First name is mandatory.")
+        role_name = self.user.role.rolename
+
+        # Salary validation
+        if self.salary <= 0:
+            raise ValidationError("Salary must be greater than 0")
+
+        # Age validation
+        age = self.calculate_age()
+        minimum_age = self.MINIMUM_AGE.get(role_name)
+
+        if minimum_age and age < minimum_age:
+            raise ValidationError(
+                f"{role_name} must be at least {minimum_age} years old"
+            )
+
+    def save(self, *args, **kwargs):
+        if not self.staff_code:
+            role_name = self.user.role.rolename
+            prefix = self.ROLE_PREFIX.get(role_name)
+
+            last_staff = StaffProfile.objects.filter(
+                staff_code__startswith=prefix
+            ).order_by("-id").first()
+
+            if last_staff:
+                last_number = int(last_staff.staff_code.split("-")[1])
+                new_number = last_number + 1
+            else:
+                new_number = 1
+
+            self.staff_code = f"{prefix}-{str(new_number).zfill(3)}"
+
+        self.full_clean()
+        super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"{self.first_name} ({self.staff_code})"
+        return self.staff_code
 
 
 # =========================
-# DOCTOR PROFILE
+# ROLE PROFILES
 # =========================
 
 class DoctorProfile(models.Model):
-    staff_profile = models.OneToOneField(
-        StaffProfile,
-        on_delete=models.CASCADE,
-        related_name="doctor_profile"
-    )
-    specialization = models.CharField(max_length=150, blank=True)
-    qualification = models.CharField(max_length=150, blank=True)
-    experience_years = models.PositiveIntegerField(default=0)
-    consultation_fee = models.DecimalField(
-        max_digits=10,
-        decimal_places=2,
-        default=0
-    )
+    staff_profile = models.OneToOneField(StaffProfile, on_delete=models.CASCADE)
+    qualification = models.CharField(max_length=150)
+    certifications = models.CharField(max_length=150)
+    specialization = models.CharField(max_length=150)
+    experience_years = models.PositiveIntegerField()
+    consultation_fee = models.DecimalField(max_digits=10, decimal_places=2)
 
-    def __str__(self):
-        return f"Dr. {self.staff_profile.first_name}"
+    def clean(self):
+        if self.consultation_fee <= 0:
+            raise ValidationError("Consultation fee must be positive")
 
-
-# =========================
-# RECEPTIONIST PROFILE
-# =========================
 
 class ReceptionistProfile(models.Model):
-    staff_profile = models.OneToOneField(
-        StaffProfile,
-        on_delete=models.CASCADE,
-        related_name="receptionist_profile"
-    )
-    shift = models.CharField(max_length=50, blank=True)
-    qualification = models.CharField(max_length=150, blank=True)
+    staff_profile = models.OneToOneField(StaffProfile, on_delete=models.CASCADE)
+    qualification = models.CharField(max_length=150)
+    shift = models.CharField(max_length=50)
 
-    def __str__(self):
-        return self.staff_profile.first_name
-
-
-# =========================
-# LAB TECHNICIAN PROFILE
-# =========================
 
 class LabTechnicianProfile(models.Model):
-    staff_profile = models.OneToOneField(
-        StaffProfile,
-        on_delete=models.CASCADE,
-        related_name="lab_technician_profile"
-    )
-    lab_specialization = models.CharField(max_length=150, blank=True)
-    certification = models.CharField(max_length=150, blank=True)
+    staff_profile = models.OneToOneField(StaffProfile, on_delete=models.CASCADE)
+    qualification = models.CharField(max_length=150)
+    certifications = models.CharField(max_length=150)
+    lab_specialization = models.CharField(max_length=150)
 
-    def __str__(self):
-        return self.staff_profile.first_name
-
-
-# =========================
-# PHARMACIST PROFILE
-# =========================
 
 class PharmacistProfile(models.Model):
-    staff_profile = models.OneToOneField(
-        StaffProfile,
-        on_delete=models.CASCADE,
-        related_name="pharmacist_profile"
-    )
+    staff_profile = models.OneToOneField(StaffProfile, on_delete=models.CASCADE)
+    qualification = models.CharField(max_length=150)
     license_number = models.CharField(max_length=100, unique=True)
-    certification = models.CharField(max_length=150, blank=True)
-
-    def __str__(self):
-        return self.staff_profile.first_name
+    certifications = models.CharField(max_length=150)
 
 
 # =========================
-# AUDIT LOG (ADMIN MONITORING)
+# AUDIT LOG
 # =========================
 
 class AuditLog(models.Model):
-    user = models.ForeignKey(
-        User,
-        on_delete=models.SET_NULL,
-        null=True,
-        related_name="audit_logs"
-    )
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
     module_name = models.CharField(max_length=100)
     action_type = models.CharField(max_length=100)
     record_id = models.IntegerField()
     timestamp = models.DateTimeField(auto_now_add=True)
-
-    def __str__(self):
-        return f"{self.user} - {self.action_type}"
