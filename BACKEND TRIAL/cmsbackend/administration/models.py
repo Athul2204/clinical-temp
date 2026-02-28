@@ -1,7 +1,13 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.core.exceptions import ValidationError
+from django.utils import timezone
+from datetime import date
 
+
+# =========================
+# ROLE MODEL
+# =========================
 
 class Role(models.Model):
     ROLE_CHOICES = [
@@ -21,7 +27,12 @@ class Role(models.Model):
         return self.rolename
 
 
+# =========================
+# CUSTOM USER
+# =========================
+
 class User(AbstractUser):
+    email = models.EmailField(unique=True)
     role = models.ForeignKey(Role, on_delete=models.PROTECT, related_name="users")
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -29,24 +40,83 @@ class User(AbstractUser):
         return self.username
 
 
+# =========================
+# STAFF PROFILE
+# =========================
+
 class StaffProfile(models.Model):
+
+    ROLE_PREFIX = {
+        "DOCTOR": "DOC",
+        "RECEPTIONIST": "REC",
+        "LAB_TECH": "LAB",
+        "PHARMACIST": "PHM",
+    }
+
+    MINIMUM_AGE = {
+        "DOCTOR": 24,
+        "RECEPTIONIST": 21,
+        "LAB_TECH": 23,
+        "PHARMACIST": 23,
+    }
+
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="staff_profile")
-    staff_code = models.CharField(max_length=20, unique=True)
-    first_name = models.CharField(max_length=100)
-    last_name = models.CharField(max_length=100, blank=True)
-    phone = models.CharField(max_length=15, blank=True)
-    date_of_birth = models.DateField()  # REQUIRED BY DOC
+    staff_code = models.CharField(max_length=20, unique=True, editable=False)
+    phone = models.CharField(max_length=15)
+    date_of_birth = models.DateField()
     salary = models.DecimalField(max_digits=10, decimal_places=2)
     joined_date = models.DateField(auto_now_add=True)
     is_active = models.BooleanField(default=True)
 
+    def calculate_age(self):
+        today = date.today()
+        return today.year - self.date_of_birth.year - (
+            (today.month, today.day) < (self.date_of_birth.month, self.date_of_birth.day)
+        )
+
     def clean(self):
-        if not self.date_of_birth:
-            raise ValidationError("Date of birth is required")
+        role_name = self.user.role.rolename
+
+        # Salary validation
+        if self.salary <= 0:
+            raise ValidationError("Salary must be greater than 0")
+
+        # Age validation
+        age = self.calculate_age()
+        minimum_age = self.MINIMUM_AGE.get(role_name)
+
+        if minimum_age and age < minimum_age:
+            raise ValidationError(
+                f"{role_name} must be at least {minimum_age} years old"
+            )
+
+    def save(self, *args, **kwargs):
+        if not self.staff_code:
+            role_name = self.user.role.rolename
+            prefix = self.ROLE_PREFIX.get(role_name)
+
+            last_staff = StaffProfile.objects.filter(
+                staff_code__startswith=prefix
+            ).order_by("-id").first()
+
+            if last_staff:
+                last_number = int(last_staff.staff_code.split("-")[1])
+                new_number = last_number + 1
+            else:
+                new_number = 1
+
+            self.staff_code = f"{prefix}-{str(new_number).zfill(3)}"
+
+        self.full_clean()
+        super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"{self.staff_code} - {self.first_name}"
+        return self.staff_code
 
+
+# =========================
+# ROLE PROFILES
+# =========================
 
 class DoctorProfile(models.Model):
     staff_profile = models.OneToOneField(StaffProfile, on_delete=models.CASCADE)
@@ -55,6 +125,10 @@ class DoctorProfile(models.Model):
     specialization = models.CharField(max_length=150)
     experience_years = models.PositiveIntegerField()
     consultation_fee = models.DecimalField(max_digits=10, decimal_places=2)
+
+    def clean(self):
+        if self.consultation_fee <= 0:
+            raise ValidationError("Consultation fee must be positive")
 
 
 class ReceptionistProfile(models.Model):
@@ -76,6 +150,10 @@ class PharmacistProfile(models.Model):
     license_number = models.CharField(max_length=100, unique=True)
     certifications = models.CharField(max_length=150)
 
+
+# =========================
+# AUDIT LOG
+# =========================
 
 class AuditLog(models.Model):
     user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
