@@ -1,239 +1,332 @@
+# from django.db import models
+# from django.core.exceptions import ValidationError
+# from django.utils import timezone
+# from administration.models import PharmacistProfile
+# from doctor.models import Prescription
+
+
+# # =========================
+# # MEDICINE MASTER
+# # =========================
+
+# class Medicine(models.Model):
+#     medicine_name = models.CharField(max_length=150, unique=True)
+#     manufacturer = models.CharField(max_length=150)
+#     selling_price = models.DecimalField(max_digits=10, decimal_places=2)
+#     is_active = models.BooleanField(default=True)
+
+#     def clean(self):
+#         if self.selling_price <= 0:
+#             raise ValidationError("Selling price must be positive")
+
+#     def __str__(self):
+#         return self.medicine_name
+
+
+# # =========================
+# # MEDICINE BATCH
+# # =========================
+
+# class MedicineBatch(models.Model):
+
+#     STATUS_CHOICES = [
+#         ("Available", "Available"),
+#         ("Expired", "Expired"),
+#         ("Returned", "Returned"),
+#     ]
+
+#     batch_code = models.CharField(max_length=20, unique=True, editable=False)
+#     medicine = models.ForeignKey(Medicine, on_delete=models.PROTECT)
+#     batch_number = models.CharField(max_length=100)
+#     quantity = models.PositiveIntegerField()
+#     expiry_date = models.DateField()
+#     status = models.CharField(max_length=30, choices=STATUS_CHOICES, default="Available")
+
+#     def clean(self):
+
+#         if self.quantity < 0:
+#             raise ValidationError("Quantity cannot be negative")
+
+#         if self.expiry_date < timezone.now().date():
+#             self.status = "Expired"
+
+#     def save(self, *args, **kwargs):
+
+#         if not self.batch_code:
+#             last = MedicineBatch.objects.order_by("-id").first()
+#             if last:
+#                 last_number = int(last.batch_code.split("-")[1])
+#                 new_number = last_number + 1
+#             else:
+#                 new_number = 1
+
+#             self.batch_code = f"MB-{str(new_number).zfill(3)}"
+
+#         self.full_clean()
+#         super().save(*args, **kwargs)
+
+#     def __str__(self):
+#         return self.batch_code
+
+
+# # =========================
+# # STOCK LOG
+# # =========================
+
+# class MedicineStockLog(models.Model):
+
+#     ACTION_CHOICES = [
+#         ("ADD", "Add"),
+#         ("DISPENSE", "Dispense"),
+#         ("EXPIRE", "Expire"),
+#         ("RETURN", "Return"),
+#     ]
+
+#     batch = models.ForeignKey(MedicineBatch, on_delete=models.CASCADE)
+#     action = models.CharField(max_length=20, choices=ACTION_CHOICES)
+#     quantity = models.PositiveIntegerField()
+#     created_at = models.DateTimeField(auto_now_add=True)
+
+
+# # =========================
+# # DISPENSE
+# # =========================
+
+# class Dispense(models.Model):
+
+#     dispense_code = models.CharField(max_length=20, unique=True, editable=False)
+#     prescription = models.ForeignKey(
+#         Prescription,
+#         on_delete=models.CASCADE,
+#         related_name="dispenses"
+#     )
+#     pharmacist = models.ForeignKey(
+#         PharmacistProfile,
+#         on_delete=models.PROTECT
+#     )
+#     dispensed_at = models.DateTimeField(auto_now_add=True)
+
+#     def clean(self):
+#         if self.prescription.status != "Sent":
+#             raise ValidationError("Prescription must be Sent before dispensing")
+
+#     def save(self, *args, **kwargs):
+
+#         if not self.dispense_code:
+#             last = Dispense.objects.order_by("-id").first()
+#             if last:
+#                 last_number = int(last.dispense_code.split("-")[1])
+#                 new_number = last_number + 1
+#             else:
+#                 new_number = 1
+
+#             self.dispense_code = f"DP-{str(new_number).zfill(3)}"
+
+#         self.full_clean()
+#         super().save(*args, **kwargs)
+
+#     def __str__(self):
+#         return self.dispense_code
+
+
+# # =========================
+# # DISPENSE ITEM
+# # =========================
+
+# class DispenseItem(models.Model):
+
+#     dispense = models.ForeignKey(
+#         Dispense,
+#         on_delete=models.CASCADE,
+#         related_name="items"
+#     )
+#     batch = models.ForeignKey(
+#         MedicineBatch,
+#         on_delete=models.PROTECT
+#     )
+#     quantity = models.PositiveIntegerField()
+
+#     def clean(self):
+
+#         if self.batch.status != "Available":
+#             raise ValidationError("Cannot dispense expired or returned batch")
+
+#         if self.quantity <= 0:
+#             raise ValidationError("Quantity must be positive")
+
+#         if self.quantity > self.batch.quantity:
+#             raise ValidationError("Insufficient stock in this batch")
+
+#     def save(self, *args, **kwargs):
+
+#         self.full_clean()
+
+#         # Deduct stock
+#         self.batch.quantity -= self.quantity
+
+#         if self.batch.quantity == 0:
+#             self.batch.status = "Expired"
+
+#         self.batch.save()
+
+#         # Log stock change
+#         MedicineStockLog.objects.create(
+#             batch=self.batch,
+#             action="DISPENSE",
+#             quantity=self.quantity
+#         )
+
+#         super().save(*args, **kwargs)
+
+
+# # =========================
+# # MEDICINE BILL
+# # =========================
+
+# class MedicineBill(models.Model):
+
+#     PAYMENT_STATUS = [
+#         ("Pending", "Pending"),
+#         ("Paid", "Paid"),
+#     ]
+
+#     bill_code = models.CharField(max_length=20, unique=True, editable=False)
+#     dispense = models.OneToOneField(
+#         Dispense,
+#         on_delete=models.CASCADE,
+#         related_name="medicine_bill"
+#     )
+#     total_amount = models.DecimalField(max_digits=10, decimal_places=2, editable=False)
+#     discount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+#     payment_status = models.CharField(max_length=30, choices=PAYMENT_STATUS, default="Pending")
+#     created_at = models.DateTimeField(auto_now_add=True)
+
+#     def calculate_total(self):
+#         total = sum(
+#             item.quantity * item.batch.medicine.selling_price
+#             for item in self.dispense.items.all()
+#         )
+
+#         if self.discount < 0:
+#             raise ValidationError("Discount cannot be negative")
+
+#         if self.discount > total:
+#             raise ValidationError("Discount cannot exceed total")
+
+#         return total - self.discount
+
+#     def save(self, *args, **kwargs):
+
+#         if not self.bill_code:
+#             last = MedicineBill.objects.order_by("-id").first()
+#             if last:
+#                 last_number = int(last.bill_code.split("-")[1])
+#                 new_number = last_number + 1
+#             else:
+#                 new_number = 1
+
+#             self.bill_code = f"BILL-{str(new_number).zfill(3)}"
+
+#         self.total_amount = self.calculate_total()
+
+#         super().save(*args, **kwargs)
+
+#         # Mark prescription as dispensed
+#         self.dispense.prescription.status = "Dispensed"
+#         self.dispense.prescription.save()
+
+#     def __str__(self):
+#         return self.bill_code
+
+
+
 from django.db import models
-from django.core.exceptions import ValidationError
 from django.utils import timezone
-from administration.models import PharmacistProfile
 from doctor.models import Prescription
+from reception.models import Patient
 
-
-# =========================
-# MEDICINE MASTER
-# =========================
-
+# ------------------------------
+# Medicine Table
+# ------------------------------
 class Medicine(models.Model):
-    medicine_name = models.CharField(max_length=150, unique=True)
-    manufacturer = models.CharField(max_length=150)
-    selling_price = models.DecimalField(max_digits=10, decimal_places=2)
-    is_active = models.BooleanField(default=True)
-
-    def clean(self):
-        if self.selling_price <= 0:
-            raise ValidationError("Selling price must be positive")
+    medicine_id = models.AutoField(primary_key=True)
+    name = models.CharField(max_length=200)
+    description = models.TextField(blank=True, null=True)
+    unit = models.CharField(max_length=50, blank=True, null=True)
+    price = models.DecimalField(max_digits=10, decimal_places=2, validators=[models.Min(0)])
 
     def __str__(self):
-        return self.medicine_name
+        return self.name
 
-
-# =========================
-# MEDICINE BATCH
-# =========================
-
+# ------------------------------
+# Medicine Batch Table
+# ------------------------------
 class MedicineBatch(models.Model):
-
-    STATUS_CHOICES = [
-        ("Available", "Available"),
-        ("Expired", "Expired"),
-        ("Returned", "Returned"),
-    ]
-
-    batch_code = models.CharField(max_length=20, unique=True, editable=False)
-    medicine = models.ForeignKey(Medicine, on_delete=models.PROTECT)
-    batch_number = models.CharField(max_length=100)
+    batch_id = models.AutoField(primary_key=True)
+    medicine = models.ForeignKey(Medicine, on_delete=models.CASCADE, related_name='batches')
+    batch_number = models.CharField(max_length=50)
     quantity = models.PositiveIntegerField()
     expiry_date = models.DateField()
-    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default="Available")
+    created_at = models.DateTimeField(default=timezone.now)
 
-    def clean(self):
-
-        if self.quantity < 0:
-            raise ValidationError("Quantity cannot be negative")
-
-        if self.expiry_date < timezone.now().date():
-            self.status = "Expired"
-
-    def save(self, *args, **kwargs):
-
-        if not self.batch_code:
-            last = MedicineBatch.objects.order_by("-id").first()
-            if last:
-                last_number = int(last.batch_code.split("-")[1])
-                new_number = last_number + 1
-            else:
-                new_number = 1
-
-            self.batch_code = f"MB-{str(new_number).zfill(3)}"
-
-        self.full_clean()
-        super().save(*args, **kwargs)
+    class Meta:
+        unique_together = ('medicine', 'batch_number')
 
     def __str__(self):
-        return self.batch_code
+        return f"{self.medicine.name} - {self.batch_number}"
 
-
-# =========================
-# STOCK LOG
-# =========================
-
+# ------------------------------
+# Medicine Stock Log Table
+# ------------------------------
 class MedicineStockLog(models.Model):
+    log_id = models.AutoField(primary_key=True)
+    batch = models.ForeignKey(MedicineBatch, on_delete=models.CASCADE, related_name='stock_logs')
+    change_type_choices = [('ADD', 'Added'), ('DISPENSE', 'Dispensed'), ('EXPIRED', 'Expired')]
+    change_type = models.CharField(max_length=20, choices=change_type_choices)
+    quantity_changed = models.IntegerField()
+    created_at = models.DateTimeField(default=timezone.now)
+    remarks = models.TextField(blank=True, null=True)
 
-    ACTION_CHOICES = [
-        ("ADD", "Add"),
-        ("DISPENSE", "Dispense"),
-        ("EXPIRE", "Expire"),
-        ("RETURN", "Return"),
-    ]
-
-    batch = models.ForeignKey(MedicineBatch, on_delete=models.CASCADE)
-    action = models.CharField(max_length=20, choices=ACTION_CHOICES)
-    quantity = models.PositiveIntegerField()
-    created_at = models.DateTimeField(auto_now_add=True)
-
-
-# =========================
-# DISPENSE
-# =========================
-
+# ------------------------------
+# Dispense Table
+# ------------------------------
 class Dispense(models.Model):
-
-    dispense_code = models.CharField(max_length=20, unique=True, editable=False)
-    prescription = models.ForeignKey(
-        Prescription,
-        on_delete=models.CASCADE,
-        related_name="dispenses"
-    )
-    pharmacist = models.ForeignKey(
-        PharmacistProfile,
-        on_delete=models.PROTECT
-    )
-    dispensed_at = models.DateTimeField(auto_now_add=True)
-
-    def clean(self):
-        if self.prescription.status != "Sent":
-            raise ValidationError("Prescription must be Sent before dispensing")
-
-    def save(self, *args, **kwargs):
-
-        if not self.dispense_code:
-            last = Dispense.objects.order_by("-id").first()
-            if last:
-                last_number = int(last.dispense_code.split("-")[1])
-                new_number = last_number + 1
-            else:
-                new_number = 1
-
-            self.dispense_code = f"DP-{str(new_number).zfill(3)}"
-
-        self.full_clean()
-        super().save(*args, **kwargs)
+    dispense_id = models.AutoField(primary_key=True)
+    prescription = models.ForeignKey(Prescription, on_delete=models.CASCADE, related_name='dispenses')
+    patient = models.ForeignKey(Patient, on_delete=models.CASCADE)
+    total_amount = models.DecimalField(max_digits=10, decimal_places=2)
+    dispense_date = models.DateTimeField(default=timezone.now)
+    status_choices = [('Pending', 'Pending'), ('Completed', 'Completed')]
+    status = models.CharField(max_length=20, choices=status_choices, default='Pending')
 
     def __str__(self):
-        return self.dispense_code
+        return f"Dispense {self.dispense_id} - {self.patient.first_name}"
 
-
-# =========================
-# DISPENSE ITEM
-# =========================
-
+# ------------------------------
+# Dispense Item Table
+# ------------------------------
 class DispenseItem(models.Model):
-
-    dispense = models.ForeignKey(
-        Dispense,
-        on_delete=models.CASCADE,
-        related_name="items"
-    )
-    batch = models.ForeignKey(
-        MedicineBatch,
-        on_delete=models.PROTECT
-    )
+    dispense_item_id = models.AutoField(primary_key=True)
+    dispense = models.ForeignKey(Dispense, on_delete=models.CASCADE, related_name='items')
+    batch = models.ForeignKey(MedicineBatch, on_delete=models.CASCADE)
     quantity = models.PositiveIntegerField()
-
-    def clean(self):
-
-        if self.batch.status != "Available":
-            raise ValidationError("Cannot dispense expired or returned batch")
-
-        if self.quantity <= 0:
-            raise ValidationError("Quantity must be positive")
-
-        if self.quantity > self.batch.quantity:
-            raise ValidationError("Insufficient stock in this batch")
-
-    def save(self, *args, **kwargs):
-
-        self.full_clean()
-
-        # Deduct stock
-        self.batch.quantity -= self.quantity
-
-        if self.batch.quantity == 0:
-            self.batch.status = "Expired"
-
-        self.batch.save()
-
-        # Log stock change
-        MedicineStockLog.objects.create(
-            batch=self.batch,
-            action="DISPENSE",
-            quantity=self.quantity
-        )
-
-        super().save(*args, **kwargs)
-
-
-# =========================
-# MEDICINE BILL
-# =========================
-
-class MedicineBill(models.Model):
-
-    PAYMENT_STATUS = [
-        ("Pending", "Pending"),
-        ("Paid", "Paid"),
-    ]
-
-    bill_code = models.CharField(max_length=20, unique=True, editable=False)
-    dispense = models.OneToOneField(
-        Dispense,
-        on_delete=models.CASCADE,
-        related_name="medicine_bill"
-    )
-    total_amount = models.DecimalField(max_digits=10, decimal_places=2, editable=False)
-    discount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    payment_status = models.CharField(max_length=30, choices=PAYMENT_STATUS, default="Pending")
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    def calculate_total(self):
-        total = sum(
-            item.quantity * item.batch.medicine.selling_price
-            for item in self.dispense.items.all()
-        )
-
-        if self.discount < 0:
-            raise ValidationError("Discount cannot be negative")
-
-        if self.discount > total:
-            raise ValidationError("Discount cannot exceed total")
-
-        return total - self.discount
-
-    def save(self, *args, **kwargs):
-
-        if not self.bill_code:
-            last = MedicineBill.objects.order_by("-id").first()
-            if last:
-                last_number = int(last.bill_code.split("-")[1])
-                new_number = last_number + 1
-            else:
-                new_number = 1
-
-            self.bill_code = f"BILL-{str(new_number).zfill(3)}"
-
-        self.total_amount = self.calculate_total()
-
-        super().save(*args, **kwargs)
-
-        # Mark prescription as dispensed
-        self.dispense.prescription.status = "Dispensed"
-        self.dispense.prescription.save()
+    price = models.DecimalField(max_digits=10, decimal_places=2)
 
     def __str__(self):
-        return self.bill_code
+        return f"{self.batch.medicine.name} x {self.quantity}"
+
+# ------------------------------
+# Medicine Bill Table
+# ------------------------------
+class MedicineBill(models.Model):
+    bill_id = models.AutoField(primary_key=True)
+    dispense = models.OneToOneField(Dispense, on_delete=models.CASCADE)
+    total_amount = models.DecimalField(max_digits=10, decimal_places=2)
+    discount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    final_amount = models.DecimalField(max_digits=10, decimal_places=2)
+    payment_status_choices = [('Pending', 'Pending'), ('Paid', 'Paid')]
+    payment_status = models.CharField(max_length=20, choices=payment_status_choices, default='Pending')
+    created_at = models.DateTimeField(default=timezone.now)
+
+    def __str__(self):
+        return f"Bill {self.bill_id} - {self.dispense.patient.first_name}"
