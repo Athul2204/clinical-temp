@@ -201,6 +201,7 @@
 
 
 from django.db import models
+from django.forms import ValidationError
 from django.utils import timezone
 from django.core.validators import MinValueValidator
 
@@ -277,6 +278,16 @@ class LabBill(models.Model):
 
     def __str__(self):
         return self.bill_number
+   
+    def save(self, *args, **kwargs):
+        self.final_amount = max(self.total_amount - self.discount, 0)
+        super().save(*args, **kwargs)
+
+    def clean(self):
+        if self.total_amount < 0:
+            raise ValidationError("Total amount cannot be negative")
+        if self.final_amount < 0:
+            raise ValidationError("Final amount cannot be negative")
 
 # ------------------------------
 # Lab Equipment Table

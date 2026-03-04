@@ -239,6 +239,7 @@
 #         return self.bill_code
 
 from django.db import models
+from django.forms import ValidationError
 from django.utils import timezone
 from django.core.validators import MinValueValidator
 
@@ -335,6 +336,17 @@ class MedicineBill(models.Model):
     payment_status_choices = [('Pending', 'Pending'), ('Paid', 'Paid')]
     payment_status = models.CharField(max_length=20, choices=payment_status_choices, default='Pending')
     created_at = models.DateTimeField(default=timezone.now)
+    
 
     def __str__(self):
         return f"Bill {self.bill_id} - {self.dispense.patient.first_name}"
+
+    def save(self, *args, **kwargs):
+        self.final_amount = max(self.total_amount - self.discount, 0)
+        super().save(*args, **kwargs)
+
+    def clean(self):
+        if self.total_amount < 0:
+             raise ValidationError("Total amount cannot be negative")
+        if self.final_amount < 0:
+            raise ValidationError("Final amount cannot be negative")

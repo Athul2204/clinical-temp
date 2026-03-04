@@ -46,46 +46,31 @@
 #         fields = "__all__"
 
 
-
 from rest_framework import serializers
-from .models import Consultation, Prescription, PrescriptionItem, LabTestRequest
-from reception.models import Appointment
+from .models import Consultation, Prescription, PrescriptionItem, LabTestRequest, LabTestRequestItem
 
-# ------------------------------
-# Consultation Serializer
-# ------------------------------
 class ConsultationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Consultation
         fields = '__all__'
 
-    def validate_appointment(self, value):
-        if value.status != 'Scheduled':
-            raise serializers.ValidationError("Consultation can only be created for scheduled appointments.")
-        return value
+class PrescriptionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Prescription
+        fields = '__all__'
 
-# ------------------------------
-# Prescription Item Serializer
-# ------------------------------
 class PrescriptionItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = PrescriptionItem
         fields = '__all__'
 
-# ------------------------------
-# Prescription Serializer
-# ------------------------------
-class PrescriptionSerializer(serializers.ModelSerializer):
-    items = PrescriptionItemSerializer(many=True, read_only=True)
-
-    class Meta:
-        model = Prescription
-        fields = '__all__'
-
-# ------------------------------
-# Lab Test Request Serializer
-# ------------------------------
 class LabTestRequestSerializer(serializers.ModelSerializer):
     class Meta:
         model = LabTestRequest
+        fields = '__all__'
+
+# 🔹 THIS WAS MISSING
+class LabTestRequestItemSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = LabTestRequestItem
         fields = '__all__'

@@ -183,7 +183,8 @@
 
 from django.db import models
 from django.utils import timezone
-from administration.models import User, DoctorProfile  # linking with admin module
+from django.contrib.auth.models import User
+from administration.models import DoctorProfile
 from django.core.validators import MinValueValidator
 
 # ------------------------------

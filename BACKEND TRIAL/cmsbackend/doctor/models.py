@@ -283,5 +283,9 @@ class LabTestRequestItem(models.Model):
     lab_request = models.ForeignKey(LabTestRequest, on_delete=models.CASCADE, related_name="tests")
     lab_test = models.ForeignKey("labtechnician.LabTest", on_delete=models.PROTECT)
 
+    def clean(self):
+        if not self.lab_test:
+            raise ValidationError("Lab Test must be selected")
+
     def __str__(self):
         return f"{self.lab_test.test_name}"
