@@ -161,90 +161,212 @@
 #     action_type = models.CharField(max_length=100)
 #     record_id = models.IntegerField()
 #     timestamp = models.DateTimeField(auto_now_add=True)
-
 from django.db import models
 from django.core.validators import MinValueValidator, RegexValidator
+from django.core.exceptions import ValidationError
 from django.utils import timezone
 from django.contrib.auth.models import User
+from datetime import date
 
 
 # ------------------------------
-# Staff Profile Table
+# Staff Profile (Common for All Staff)
 # ------------------------------
 class StaffProfile(models.Model):
-    staff_id = models.AutoField(primary_key=True)
-    user = models.OneToOneField(User, on_delete=models.CASCADE)
+
+    id = models.AutoField(primary_key=True)
+
+    staff_code = models.CharField(
+        max_length=20,
+        unique=True,
+        editable=False
+    )
+
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name="staff_profile"
+    )
+
     phone = models.CharField(
         max_length=15,
-        validators=[RegexValidator(r'^\+?\d{9,15}$', 'Enter a valid phone number')]
+        unique=True,
+        validators=[
+            RegexValidator(r'^\+?\d{9,15}$', 'Enter a valid phone number')
+        ]
     )
+
     address = models.TextField(blank=True, null=True)
-    salary = models.PositiveIntegerField(validators=[MinValueValidator(1)])
+
+    qualification = models.CharField(
+        max_length=255,
+        help_text="Degree / Diploma / Certification"
+    )
+
+    salary = models.PositiveIntegerField(
+        validators=[MinValueValidator(1)]
+    )
+
     joining_date = models.DateField(default=timezone.now)
 
+    is_active = models.BooleanField(default=True)
+
+    # ------------------------------
+    # AUTO GENERATE PREFIX ID
+    # ------------------------------
+    def save(self, *args, **kwargs):
+
+        if not self.staff_code:
+
+            role_prefix = {
+                "Doctor": "DOC",
+                "Receptionist": "REC",
+                "Lab Technician": "LAB",
+                "Pharmacist": "PHM"
+            }
+
+            role = self.user.groups.first().name if self.user.groups.exists() else None
+            prefix = role_prefix.get(role, "STF")
+
+            last_staff = StaffProfile.objects.filter(
+                staff_code__startswith=prefix
+            ).order_by("-id").first()
+
+            if last_staff:
+                last_number = int(last_staff.staff_code.split("-")[1])
+                new_number = last_number + 1
+            else:
+                new_number = 1
+
+            self.staff_code = f"{prefix}-{str(new_number).zfill(3)}"
+
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def clean(self):
+        if self.joining_date > date.today():
+            raise ValidationError("Joining date cannot be in the future.")
+
     def __str__(self):
-        return f"{self.user.username} Profile"
+        return f"{self.staff_code} - {self.user.username}"
 
 
 # ------------------------------
 # Doctor Profile
 # ------------------------------
 class DoctorProfile(models.Model):
+
     doctor_id = models.AutoField(primary_key=True)
-    user = models.OneToOneField(User, on_delete=models.CASCADE)
+
+    staff = models.OneToOneField(
+        StaffProfile,
+        on_delete=models.CASCADE,
+        related_name="doctor_profile"
+    )
+
     specialization = models.CharField(max_length=100)
-    qualification = models.CharField(max_length=100)
-    consultation_fee = models.PositiveIntegerField(validators=[MinValueValidator(0)])
-    experience_years = models.PositiveIntegerField(validators=[MinValueValidator(0)])
+
+    consultation_fee = models.PositiveIntegerField(
+        validators=[MinValueValidator(0)]
+    )
+
+    experience_years = models.PositiveIntegerField(
+        validators=[MinValueValidator(0)]
+    )
 
     def __str__(self):
-        return f"Dr. {self.user.username} ({self.specialization})"
+        return f"{self.staff.staff_code} - {self.specialization}"
 
 
 # ------------------------------
 # Receptionist Profile
 # ------------------------------
 class ReceptionistProfile(models.Model):
+
     profile_id = models.AutoField(primary_key=True)
-    user = models.OneToOneField(User, on_delete=models.CASCADE)
+
+    staff = models.OneToOneField(
+        StaffProfile,
+        on_delete=models.CASCADE,
+        related_name="receptionist_profile"
+    )
 
     def __str__(self):
-        return f"Receptionist: {self.user.username}"
+        return f"{self.staff.staff_code} - Receptionist"
 
 
 # ------------------------------
 # Lab Technician Profile
 # ------------------------------
 class LabTechnicianProfile(models.Model):
+
     profile_id = models.AutoField(primary_key=True)
-    user = models.OneToOneField(User, on_delete=models.CASCADE)
-    certification = models.CharField(max_length=255)
+
+    staff = models.OneToOneField(
+        StaffProfile,
+        on_delete=models.CASCADE,
+        related_name="labtech_profile"
+    )
+
+    certification_details = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text="Optional additional certification"
+    )
 
     def __str__(self):
-        return f"LabTech: {self.user.username}"
+        return f"{self.staff.staff_code} - Lab Technician"
 
 
 # ------------------------------
 # Pharmacist Profile
 # ------------------------------
 class PharmacistProfile(models.Model):
+
     profile_id = models.AutoField(primary_key=True)
-    user = models.OneToOneField(User, on_delete=models.CASCADE)
-    license_number = models.CharField(max_length=50, unique=True)
+
+    staff = models.OneToOneField(
+        StaffProfile,
+        on_delete=models.CASCADE,
+        related_name="pharmacist_profile"
+    )
+
+    license_number = models.CharField(
+        max_length=50,
+        unique=True
+    )
 
     def __str__(self):
-        return f"Pharmacist: {self.user.username}"
+        return f"{self.staff.staff_code} - Pharmacist"
 
 
 # ------------------------------
-# Audit Log Table
+# Audit Log (Centralized Monitoring)
 # ------------------------------
 class AuditLog(models.Model):
+
     log_id = models.AutoField(primary_key=True)
-    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
-    action = models.CharField(max_length=255)
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True
+    )
+
+    module = models.CharField(max_length=100)
+
+    action = models.CharField(max_length=50)
+
+    object_id = models.IntegerField(null=True, blank=True)
+
     description = models.TextField(blank=True, null=True)
-    timestamp = models.DateTimeField(default=timezone.now)
+
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-timestamp']
 
     def __str__(self):
-        return f"{self.user} - {self.action} at {self.timestamp}"
+        return f"{self.module} - {self.action} - {self.timestamp}"
