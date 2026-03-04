@@ -200,11 +200,12 @@
 #         super().save(*args, **kwargs)
 
 
-
 from django.db import models
 from django.utils import timezone
-from doctor.models import LabTestRequest
-from reception.models import Patient
+from django.core.validators import MinValueValidator
+
+# Use string reference to avoid circular import
+# 'doctor.LabTestRequest'
 
 # ------------------------------
 # Lab Test Table
@@ -213,7 +214,7 @@ class LabTest(models.Model):
     test_id = models.AutoField(primary_key=True)
     test_name = models.CharField(max_length=200)
     description = models.TextField(blank=True, null=True)
-    cost = models.DecimalField(max_digits=10, decimal_places=2, validators=[models.Min(0)])
+    cost = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0)])
     normal_range = models.CharField(max_length=100, blank=True, null=True)
     unit = models.CharField(max_length=50, blank=True, null=True)
 
@@ -226,8 +227,8 @@ class LabTest(models.Model):
 class LabOrder(models.Model):
     order_id = models.AutoField(primary_key=True)
     order_number = models.CharField(max_length=20, unique=True)
-    lab_request = models.ForeignKey(LabTestRequest, on_delete=models.CASCADE, related_name='lab_orders')
-    patient = models.ForeignKey(Patient, on_delete=models.CASCADE)
+    lab_request = models.ForeignKey("doctor.LabTestRequest", on_delete=models.CASCADE, related_name='lab_orders')
+    patient = models.ForeignKey("reception.Patient", on_delete=models.CASCADE)
     status_choices = [('Pending', 'Pending'), ('Completed', 'Completed')]
     status = models.CharField(max_length=20, choices=status_choices, default='Pending')
     created_at = models.DateTimeField(default=timezone.now)
@@ -300,7 +301,7 @@ class LabMaintenance(models.Model):
     service_date = models.DateField()
     technician_name = models.CharField(max_length=100)
     remarks = models.TextField(blank=True, null=True)
-    cost = models.DecimalField(max_digits=10, decimal_places=2, validators=[models.Min(0)])
+    cost = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0)])
 
     def __str__(self):
         return f"Maintenance {self.maintenance_id} - {self.equipment.name}"

@@ -238,12 +238,12 @@
 #     def __str__(self):
 #         return self.bill_code
 
-
-
 from django.db import models
 from django.utils import timezone
-from doctor.models import Prescription
-from reception.models import Patient
+from django.core.validators import MinValueValidator
+
+# Use string references to avoid circular imports
+# 'doctor.Prescription' and 'reception.Patient'
 
 # ------------------------------
 # Medicine Table
@@ -253,7 +253,11 @@ class Medicine(models.Model):
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True, null=True)
     unit = models.CharField(max_length=50, blank=True, null=True)
-    price = models.DecimalField(max_digits=10, decimal_places=2, validators=[models.Min(0)])
+    price = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2, 
+        validators=[MinValueValidator(0)]
+    )
 
     def __str__(self):
         return self.name
@@ -292,8 +296,8 @@ class MedicineStockLog(models.Model):
 # ------------------------------
 class Dispense(models.Model):
     dispense_id = models.AutoField(primary_key=True)
-    prescription = models.ForeignKey(Prescription, on_delete=models.CASCADE, related_name='dispenses')
-    patient = models.ForeignKey(Patient, on_delete=models.CASCADE)
+    prescription = models.ForeignKey("doctor.Prescription", on_delete=models.CASCADE, related_name='dispenses')
+    patient = models.ForeignKey("reception.Patient", on_delete=models.CASCADE)
     total_amount = models.DecimalField(max_digits=10, decimal_places=2)
     dispense_date = models.DateTimeField(default=timezone.now)
     status_choices = [('Pending', 'Pending'), ('Completed', 'Completed')]
@@ -310,7 +314,11 @@ class DispenseItem(models.Model):
     dispense = models.ForeignKey(Dispense, on_delete=models.CASCADE, related_name='items')
     batch = models.ForeignKey(MedicineBatch, on_delete=models.CASCADE)
     quantity = models.PositiveIntegerField()
-    price = models.DecimalField(max_digits=10, decimal_places=2)
+    price = models.DecimalField(
+        max_digits=10, 
+        decimal_places=2, 
+        validators=[MinValueValidator(0)]
+    )
 
     def __str__(self):
         return f"{self.batch.medicine.name} x {self.quantity}"
@@ -322,8 +330,8 @@ class MedicineBill(models.Model):
     bill_id = models.AutoField(primary_key=True)
     dispense = models.OneToOneField(Dispense, on_delete=models.CASCADE)
     total_amount = models.DecimalField(max_digits=10, decimal_places=2)
-    discount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    final_amount = models.DecimalField(max_digits=10, decimal_places=2)
+    discount = models.DecimalField(max_digits=10, decimal_places=2, default=0, validators=[MinValueValidator(0)])
+    final_amount = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0)])
     payment_status_choices = [('Pending', 'Pending'), ('Paid', 'Paid')]
     payment_status = models.CharField(max_length=20, choices=payment_status_choices, default='Pending')
     created_at = models.DateTimeField(default=timezone.now)

@@ -155,20 +155,21 @@
 #     def __str__(self):
 #         return f"LabRequest-{self.id}"
 
-
 from django.db import models
 from django.core.exceptions import ValidationError
 from django.utils import timezone
-from administration.models import DoctorProfile
-from reception.models import Appointment
-from labtechnician.models import LabTest
+from django.core.validators import MinValueValidator
+
+# Use string references to avoid circular imports
+# 'reception.Appointment' and 'administration.DoctorProfile'
+# 'labtechnician.LabTest' for LabTest
 
 # =========================
 # CONSULTATION
 # =========================
 class Consultation(models.Model):
     consultation_code = models.CharField(max_length=20, unique=True, editable=False)
-    appointment = models.OneToOneField(Appointment, on_delete=models.CASCADE)
+    appointment = models.OneToOneField("reception.Appointment", on_delete=models.CASCADE)
     symptoms = models.TextField()
     diagnosis = models.TextField()
     vitals = models.TextField()
@@ -197,24 +198,15 @@ class Consultation(models.Model):
     def __str__(self):
         return self.consultation_code
 
-
 # =========================
 # PRESCRIPTION
 # =========================
 class Prescription(models.Model):
-    STATUS_CHOICES = [
-        ("Draft", "Draft"),
-        ("Sent", "Sent"),
-        ("Dispensed", "Dispensed"),
-    ]
+    STATUS_CHOICES = [("Draft", "Draft"), ("Sent", "Sent"), ("Dispensed", "Dispensed")]
 
     prescription_code = models.CharField(max_length=20, unique=True, editable=False)
-    consultation = models.OneToOneField(
-        Consultation,
-        on_delete=models.CASCADE,
-        related_name="prescription"
-    )
-    doctor = models.ForeignKey(DoctorProfile, on_delete=models.PROTECT)
+    consultation = models.OneToOneField(Consultation, on_delete=models.CASCADE, related_name="prescription")
+    doctor = models.ForeignKey("administration.DoctorProfile", on_delete=models.PROTECT)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="Draft")
     created_at = models.DateTimeField(auto_now_add=True)
     sent_at = models.DateTimeField(null=True, blank=True)
@@ -250,17 +242,11 @@ class Prescription(models.Model):
     def __str__(self):
         return self.prescription_code
 
-
 # =========================
 # PRESCRIPTION ITEM
 # =========================
 class PrescriptionItem(models.Model):
-    prescription = models.ForeignKey(
-        Prescription,
-        on_delete=models.CASCADE,
-        related_name="items"
-    )
-    # Optional: if you have Medicine table, replace medicine_name with FK
+    prescription = models.ForeignKey(Prescription, on_delete=models.CASCADE, related_name="items")
     medicine_name = models.CharField(max_length=150)
     dosage = models.CharField(max_length=50)
     frequency = models.CharField(max_length=50)
@@ -271,21 +257,13 @@ class PrescriptionItem(models.Model):
         if self.duration <= 0:
             raise ValidationError("Duration must be positive")
 
-
 # =========================
 # LAB TEST REQUEST
 # =========================
 class LabTestRequest(models.Model):
-    STATUS_CHOICES = [
-        ("Pending", "Pending"),
-        ("Completed", "Completed"),
-    ]
-    consultation = models.OneToOneField(
-        Consultation,
-        on_delete=models.CASCADE,
-        related_name="lab_request"
-    )
-    doctor = models.ForeignKey(DoctorProfile, on_delete=models.PROTECT)
+    STATUS_CHOICES = [("Pending", "Pending"), ("Completed", "Completed")]
+    consultation = models.OneToOneField(Consultation, on_delete=models.CASCADE, related_name="lab_request")
+    doctor = models.ForeignKey("administration.DoctorProfile", on_delete=models.PROTECT)
     notes = models.TextField(blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="Pending")
     created_at = models.DateTimeField(auto_now_add=True)
@@ -295,33 +273,15 @@ class LabTestRequest(models.Model):
         if self.consultation.appointment.doctor != self.doctor:
             raise ValidationError("Doctor mismatch with consultation")
 
-    def check_completion(self):
-        """Update status to Completed if all lab orders have results"""
-        all_done = all(
-            item.labresult_set.exists() for order in getattr(self, 'lab_orders', []).all() for item in order.items.all()
-        )
-        if all_done:
-            self.status = "Completed"
-            self.completed_at = timezone.now()
-            self.save(update_fields=["status", "completed_at"])
-
     def __str__(self):
         return f"LabRequest-{self.id}"
-
 
 # =========================
 # LAB TEST REQUEST ITEMS
 # =========================
 class LabTestRequestItem(models.Model):
-    lab_request = models.ForeignKey(
-        LabTestRequest,
-        on_delete=models.CASCADE,
-        related_name="tests"
-    )
-    lab_test = models.ForeignKey(
-        LabTest,
-        on_delete=models.PROTECT
-    )
+    lab_request = models.ForeignKey(LabTestRequest, on_delete=models.CASCADE, related_name="tests")
+    lab_test = models.ForeignKey("labtechnician.LabTest", on_delete=models.PROTECT)
 
     def __str__(self):
         return f"{self.lab_test.test_name}"
