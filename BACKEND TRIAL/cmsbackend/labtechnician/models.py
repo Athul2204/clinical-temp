@@ -207,13 +207,13 @@ from doctor.models import LabTestRequest
 from reception.models import Patient
 
 # ------------------------------
-# Lab Test Table
+# Lab Test
 # ------------------------------
 class LabTest(models.Model):
     test_id = models.AutoField(primary_key=True)
     test_name = models.CharField(max_length=200)
     description = models.TextField(blank=True, null=True)
-    cost = models.DecimalField(max_digits=10, decimal_places=2, validators=[models.Min(0)])
+    cost = models.DecimalField(max_digits=10, decimal_places=2)
     normal_range = models.CharField(max_length=100, blank=True, null=True)
     unit = models.CharField(max_length=50, blank=True, null=True)
 
@@ -221,22 +221,30 @@ class LabTest(models.Model):
         return self.test_name
 
 # ------------------------------
-# Lab Order Table
+# Lab Order
 # ------------------------------
 class LabOrder(models.Model):
     order_id = models.AutoField(primary_key=True)
     order_number = models.CharField(max_length=20, unique=True)
     lab_request = models.ForeignKey(LabTestRequest, on_delete=models.CASCADE, related_name='lab_orders')
     patient = models.ForeignKey(Patient, on_delete=models.CASCADE)
-    status_choices = [('Pending', 'Pending'), ('Completed', 'Completed')]
-    status = models.CharField(max_length=20, choices=status_choices, default='Pending')
+    STATUS_CHOICES = [('Pending', 'Pending'), ('Completed', 'Completed')]
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Pending')
     created_at = models.DateTimeField(default=timezone.now)
+
+    def update_status(self):
+        """Automatically mark order Completed if all items have results"""
+        if all(item.labresult_set.exists() for item in self.items.all()):
+            self.status = "Completed"
+            self.save(update_fields=['status'])
+            # Also update parent lab request
+            self.lab_request.check_completion()
 
     def __str__(self):
         return self.order_number
 
 # ------------------------------
-# Lab Order Item Table
+# Lab Order Item
 # ------------------------------
 class LabOrderItem(models.Model):
     order_item_id = models.AutoField(primary_key=True)
@@ -246,8 +254,9 @@ class LabOrderItem(models.Model):
     def __str__(self):
         return f"{self.lab_test.test_name} in {self.lab_order.order_number}"
 
+
 # ------------------------------
-# Lab Result Table
+# Lab Result
 # ------------------------------
 class LabResult(models.Model):
     result_id = models.AutoField(primary_key=True)
@@ -257,25 +266,14 @@ class LabResult(models.Model):
     is_critical = models.BooleanField(default=False)
     created_at = models.DateTimeField(default=timezone.now)
 
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        # Update order status automatically after result
+        self.lab_order_item.lab_order.update_status()
+
     def __str__(self):
         return f"Result {self.result_id} - {self.lab_order_item.lab_test.test_name}"
 
-# ------------------------------
-# Lab Bill Table
-# ------------------------------
-class LabBill(models.Model):
-    lab_bill_id = models.AutoField(primary_key=True)
-    bill_number = models.CharField(max_length=20, unique=True)
-    lab_order = models.OneToOneField(LabOrder, on_delete=models.CASCADE)
-    total_amount = models.DecimalField(max_digits=10, decimal_places=2)
-    discount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    final_amount = models.DecimalField(max_digits=10, decimal_places=2)
-    payment_status_choices = [('Pending', 'Pending'), ('Paid', 'Paid')]
-    payment_status = models.CharField(max_length=20, choices=payment_status_choices, default='Pending')
-    created_at = models.DateTimeField(default=timezone.now)
-
-    def __str__(self):
-        return self.bill_number
 
 # ------------------------------
 # Lab Equipment Table
