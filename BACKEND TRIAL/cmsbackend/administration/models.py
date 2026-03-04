@@ -162,46 +162,11 @@
 #     record_id = models.IntegerField()
 #     timestamp = models.DateTimeField(auto_now_add=True)
 
-
-
 from django.db import models
-from django.core.validators import MinValueValidator, RegexValidator, EmailValidator
+from django.core.validators import MinValueValidator, RegexValidator
 from django.utils import timezone
-from django.contrib.auth.models import AbstractUser
+from django.contrib.auth.models import User
 
-# ------------------------------
-# Role Table
-# ------------------------------
-class Role(models.Model):
-    ROLE_CHOICES = [
-        ('Admin', 'Admin'),
-        ('Doctor', 'Doctor'),
-        ('Receptionist', 'Receptionist'),
-        ('LabTech', 'Lab Technician'),
-        ('Pharmacist', 'Pharmacist')
-    ]
-    role_id = models.AutoField(primary_key=True)
-    name = models.CharField(max_length=50, choices=ROLE_CHOICES, unique=True)
-    description = models.TextField(blank=True, null=True)
-    created_at = models.DateTimeField(default=timezone.now)
-
-    def __str__(self):
-        return self.name
-
-# ------------------------------
-# Custom User Table
-# ------------------------------
-class User(AbstractUser):
-    user_id = models.AutoField(primary_key=True)
-    email = models.EmailField(unique=True, validators=[EmailValidator()])
-    role = models.ForeignKey(Role, on_delete=models.CASCADE)
-    is_active = models.BooleanField(default=True)
-    created_at = models.DateTimeField(default=timezone.now)
-
-    REQUIRED_FIELDS = ['email', 'role']
-
-    def __str__(self):
-        return f"{self.username} ({self.role.name})"
 
 # ------------------------------
 # Staff Profile Table
@@ -209,15 +174,17 @@ class User(AbstractUser):
 class StaffProfile(models.Model):
     staff_id = models.AutoField(primary_key=True)
     user = models.OneToOneField(User, on_delete=models.CASCADE)
-    phone = models.CharField(max_length=15, validators=[
-        RegexValidator(r'^\+?\d{9,15}$', 'Enter a valid phone number')
-    ])
+    phone = models.CharField(
+        max_length=15,
+        validators=[RegexValidator(r'^\+?\d{9,15}$', 'Enter a valid phone number')]
+    )
     address = models.TextField(blank=True, null=True)
     salary = models.PositiveIntegerField(validators=[MinValueValidator(1)])
     joining_date = models.DateField(default=timezone.now)
 
     def __str__(self):
         return f"{self.user.username} Profile"
+
 
 # ------------------------------
 # Doctor Profile
@@ -233,6 +200,7 @@ class DoctorProfile(models.Model):
     def __str__(self):
         return f"Dr. {self.user.username} ({self.specialization})"
 
+
 # ------------------------------
 # Receptionist Profile
 # ------------------------------
@@ -242,6 +210,7 @@ class ReceptionistProfile(models.Model):
 
     def __str__(self):
         return f"Receptionist: {self.user.username}"
+
 
 # ------------------------------
 # Lab Technician Profile
@@ -254,6 +223,7 @@ class LabTechnicianProfile(models.Model):
     def __str__(self):
         return f"LabTech: {self.user.username}"
 
+
 # ------------------------------
 # Pharmacist Profile
 # ------------------------------
@@ -264,6 +234,7 @@ class PharmacistProfile(models.Model):
 
     def __str__(self):
         return f"Pharmacist: {self.user.username}"
+
 
 # ------------------------------
 # Audit Log Table

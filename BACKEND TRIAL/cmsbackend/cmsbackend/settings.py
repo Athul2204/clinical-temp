@@ -40,18 +40,15 @@ INSTALLED_APPS = [
 
     # Your apps
     'administration',
-    'reception',
+    'authentication',
     'doctor',
     'labtechnician',
     'pharmacist',
-    'cmsbackend',
-
-    # Third-party apps
-    'rest_framework',
+    'reception',
 ]
 
 
-AUTH_USER_MODEL = 'administration.User'
+
 
 
 MIDDLEWARE = [
