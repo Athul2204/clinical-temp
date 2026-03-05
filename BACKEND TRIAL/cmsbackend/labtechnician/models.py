@@ -199,14 +199,10 @@
 
 #         super().save(*args, **kwargs)
 
-
 from django.db import models
-from django.forms import ValidationError
+from django.core.exceptions import ValidationError
 from django.utils import timezone
 from django.core.validators import MinValueValidator
-
-# Use string reference to avoid circular import
-# 'doctor.LabTestRequest'
 
 # ------------------------------
 # Lab Test Table
@@ -215,12 +211,15 @@ class LabTest(models.Model):
     test_id = models.AutoField(primary_key=True)
     test_name = models.CharField(max_length=200)
     description = models.TextField(blank=True, null=True)
-    cost = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0)])
+    cost = models.DecimalField(
+        max_digits=10, decimal_places=2, validators=[MinValueValidator(0)]
+    )
     normal_range = models.CharField(max_length=100, blank=True, null=True)
     unit = models.CharField(max_length=50, blank=True, null=True)
 
     def __str__(self):
         return self.test_name
+
 
 # ------------------------------
 # Lab Order Table
@@ -228,39 +227,48 @@ class LabTest(models.Model):
 class LabOrder(models.Model):
     order_id = models.AutoField(primary_key=True)
     order_number = models.CharField(max_length=20, unique=True)
-    lab_request = models.ForeignKey("doctor.LabTestRequest", on_delete=models.CASCADE, related_name='lab_orders')
+    lab_request = models.ForeignKey(
+        "doctor.LabTestRequest", on_delete=models.CASCADE, related_name="lab_orders"
+    )
     patient = models.ForeignKey("reception.Patient", on_delete=models.CASCADE)
-    status_choices = [('Pending', 'Pending'), ('Completed', 'Completed')]
-    status = models.CharField(max_length=20, choices=status_choices, default='Pending')
-    created_at = models.DateTimeField(default=timezone.now)
+    status_choices = [("Pending", "Pending"), ("Completed", "Completed")]
+    status = models.CharField(max_length=20, choices=status_choices, default="Pending")
+    created_at = models.DateTimeField(default=timezone.now, editable=False)
 
     def __str__(self):
         return self.order_number
+
 
 # ------------------------------
 # Lab Order Item Table
 # ------------------------------
 class LabOrderItem(models.Model):
     order_item_id = models.AutoField(primary_key=True)
-    lab_order = models.ForeignKey(LabOrder, on_delete=models.CASCADE, related_name='items')
+    lab_order = models.ForeignKey(
+        LabOrder, on_delete=models.CASCADE, related_name="items"
+    )
     lab_test = models.ForeignKey(LabTest, on_delete=models.CASCADE)
 
     def __str__(self):
         return f"{self.lab_test.test_name} in {self.lab_order.order_number}"
+
 
 # ------------------------------
 # Lab Result Table
 # ------------------------------
 class LabResult(models.Model):
     result_id = models.AutoField(primary_key=True)
-    lab_order_item = models.OneToOneField(LabOrderItem, on_delete=models.CASCADE)
+    lab_order_item = models.OneToOneField(
+        LabOrderItem, on_delete=models.CASCADE
+    )
     result_value = models.CharField(max_length=200)
     remarks = models.TextField(blank=True, null=True)
     is_critical = models.BooleanField(default=False)
-    created_at = models.DateTimeField(default=timezone.now)
+    created_at = models.DateTimeField(default=timezone.now, editable=False)
 
     def __str__(self):
         return f"Result {self.result_id} - {self.lab_order_item.lab_test.test_name}"
+
 
 # ------------------------------
 # Lab Bill Table
@@ -271,14 +279,11 @@ class LabBill(models.Model):
     lab_order = models.OneToOneField(LabOrder, on_delete=models.CASCADE)
     total_amount = models.DecimalField(max_digits=10, decimal_places=2)
     discount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    final_amount = models.DecimalField(max_digits=10, decimal_places=2)
-    payment_status_choices = [('Pending', 'Pending'), ('Paid', 'Paid')]
-    payment_status = models.CharField(max_length=20, choices=payment_status_choices, default='Pending')
-    created_at = models.DateTimeField(default=timezone.now)
+    final_amount = models.DecimalField(max_digits=10, decimal_places=2, editable=False)
+    payment_status_choices = [("Pending", "Pending"), ("Paid", "Paid")]
+    payment_status = models.CharField(max_length=20, choices=payment_status_choices, default="Pending")
+    created_at = models.DateTimeField(default=timezone.now, editable=False)
 
-    def __str__(self):
-        return self.bill_number
-   
     def save(self, *args, **kwargs):
         self.final_amount = max(self.total_amount - self.discount, 0)
         super().save(*args, **kwargs)
@@ -289,6 +294,10 @@ class LabBill(models.Model):
         if self.final_amount < 0:
             raise ValidationError("Final amount cannot be negative")
 
+    def __str__(self):
+        return self.bill_number
+
+
 # ------------------------------
 # Lab Equipment Table
 # ------------------------------
@@ -297,22 +306,31 @@ class LabEquipment(models.Model):
     name = models.CharField(max_length=200)
     purchase_date = models.DateField()
     last_service_date = models.DateField(blank=True, null=True)
-    status_choices = [('Available', 'Available'), ('Under Maintenance', 'Under Maintenance'), ('Out of Service', 'Out of Service')]
-    status = models.CharField(max_length=50, choices=status_choices, default='Available')
+    status_choices = [
+        ("Available", "Available"),
+        ("Under Maintenance", "Under Maintenance"),
+        ("Out of Service", "Out of Service")
+    ]
+    status = models.CharField(max_length=50, choices=status_choices, default="Available")
 
     def __str__(self):
         return self.name
+
 
 # ------------------------------
 # Lab Maintenance Table
 # ------------------------------
 class LabMaintenance(models.Model):
     maintenance_id = models.AutoField(primary_key=True)
-    equipment = models.ForeignKey(LabEquipment, on_delete=models.CASCADE, related_name='maintenance_records')
+    equipment = models.ForeignKey(
+        LabEquipment, on_delete=models.CASCADE, related_name="maintenance_records"
+    )
     service_date = models.DateField()
     technician_name = models.CharField(max_length=100)
     remarks = models.TextField(blank=True, null=True)
-    cost = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0)])
+    cost = models.DecimalField(
+        max_digits=10, decimal_places=2, validators=[MinValueValidator(0)]
+    )
 
     def __str__(self):
         return f"Maintenance {self.maintenance_id} - {self.equipment.name}"
