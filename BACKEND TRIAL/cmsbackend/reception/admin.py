@@ -1,31 +1,38 @@
 from django.contrib import admin
-from .models import Patient, Appointment, ConsultationBill, DoctorAvailability
+from .models import Patient, DoctorAvailability, Appointment, ConsultationBill
 
 # ------------------------------
 # Patient Admin
 # ------------------------------
 @admin.register(Patient)
 class PatientAdmin(admin.ModelAdmin):
-    list_display = ('patient_id', 'first_name', 'last_name', 'phone', 'email', 'gender', 'membership_status', 'age', 'created_at')
+    list_display = ('patient_id', 'first_name', 'last_name', 'email', 'phone', 'gender', 'membership_status', 'age')
+    search_fields = ('first_name', 'last_name', 'email', 'phone')
+    list_filter = ('gender', 'membership_status')
+
+# ------------------------------
+# Doctor Availability Admin
+# ------------------------------
+@admin.register(DoctorAvailability)
+class DoctorAvailabilityAdmin(admin.ModelAdmin):
+    list_display = ('availability_id', 'doctor', 'available_date', 'start_time', 'end_time')
+    search_fields = ('doctor__user__username',)
+    list_filter = ('available_date',)
 
 # ------------------------------
 # Appointment Admin
 # ------------------------------
 @admin.register(Appointment)
 class AppointmentAdmin(admin.ModelAdmin):
-    list_display = ('appointment_id', 'patient', 'doctor', 'appointment_date', 'appointment_time', 'status', 'token_number', 'created_at')
+    list_display = ('appointment_id', 'patient', 'doctor', 'appointment_date', 'appointment_time', 'status')
+    search_fields = ('patient__first_name', 'patient__last_name', 'doctor__user__username')
+    list_filter = ('status', 'appointment_date')
 
 # ------------------------------
-# ConsultationBill Admin
+# Consultation Billing Admin
 # ------------------------------
 @admin.register(ConsultationBill)
 class ConsultationBillAdmin(admin.ModelAdmin):
-    # Match field names from models
     list_display = ('bill_id', 'appointment', 'amount', 'status', 'created_at')
-
-# ------------------------------
-# DoctorAvailability Admin
-# ------------------------------
-@admin.register(DoctorAvailability)
-class DoctorAvailabilityAdmin(admin.ModelAdmin):
-    list_display = ('availability_id', 'doctor', 'available_date', 'start_time', 'end_time')
+    search_fields = ('appointment__patient__first_name', 'appointment__doctor__user__username')
+    list_filter = ('status', 'created_at')

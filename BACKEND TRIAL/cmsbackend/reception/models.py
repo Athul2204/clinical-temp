@@ -180,11 +180,10 @@
 #     def __str__(self):
 #         return self.bill_code
 
-
 from django.db import models
 from django.utils import timezone
-from administration.models import User, DoctorProfile  # linking with admin module
 from django.core.validators import MinValueValidator
+from administration.models import DoctorProfile
 
 # ------------------------------
 # Patient Table
@@ -196,13 +195,13 @@ class Patient(models.Model):
     email = models.EmailField(unique=True)
     phone = models.CharField(max_length=15)
     date_of_birth = models.DateField()
-    age = models.PositiveIntegerField(blank=True, null=True)
+    age = models.PositiveIntegerField(blank=True, null=True, editable=False)
     gender_choices = [('Male', 'Male'), ('Female', 'Female'), ('Other', 'Other')]
     gender = models.CharField(max_length=10, choices=gender_choices)
     address = models.TextField()
     membership_status_choices = [('Regular', 'Regular'), ('Premium', 'Premium')]
     membership_status = models.CharField(max_length=20, choices=membership_status_choices, default='Regular')
-    created_at = models.DateTimeField(default=timezone.now)
+    created_at = models.DateTimeField(default=timezone.now, editable=False)
 
     def save(self, *args, **kwargs):
         # Calculate age from DOB
@@ -213,7 +212,8 @@ class Patient(models.Model):
     def __str__(self):
         return f"{self.first_name} {self.last_name}"
 
-# ------------------------------
+
+
 # Doctor Availability Table
 # ------------------------------
 class DoctorAvailability(models.Model):
@@ -227,7 +227,8 @@ class DoctorAvailability(models.Model):
         unique_together = ('doctor', 'available_date', 'start_time', 'end_time')
 
     def __str__(self):
-        return f"{self.doctor.user.username} on {self.available_date}"
+        return f"{self.doctor.staff.user.username} on {self.available_date}"
+
 
 # ------------------------------
 # Appointment Table
@@ -242,13 +243,13 @@ class Appointment(models.Model):
     reason = models.TextField()
     status_choices = [('Scheduled', 'Scheduled'), ('Completed', 'Completed'), ('Cancelled', 'Cancelled')]
     status = models.CharField(max_length=20, choices=status_choices, default='Scheduled')
-    created_at = models.DateTimeField(default=timezone.now)
+    created_at = models.DateTimeField(default=timezone.now, editable=False)
 
     class Meta:
         unique_together = ('doctor', 'appointment_date', 'appointment_time')
 
     def __str__(self):
-        return f"{self.patient.first_name} with Dr.{self.doctor.user.username} on {self.appointment_date}"
+        return f"{self.patient.first_name} with Dr.{self.doctor.staff.user.username} on {self.appointment_date}"
 
 # ------------------------------
 # Consultation Billing Table
@@ -259,7 +260,7 @@ class ConsultationBill(models.Model):
     amount = models.PositiveIntegerField(validators=[MinValueValidator(0)])
     status_choices = [('Paid', 'Paid'), ('Unpaid', 'Unpaid')]
     status = models.CharField(max_length=20, choices=status_choices, default='Unpaid')
-    created_at = models.DateTimeField(default=timezone.now)
+    created_at = models.DateTimeField(default=timezone.now, editable=False)
 
     def __str__(self):
         return f"Bill {self.bill_id} for {self.appointment}"

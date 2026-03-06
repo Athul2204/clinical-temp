@@ -237,13 +237,10 @@
 
 #     def __str__(self):
 #         return self.bill_code
-
 from django.db import models
+from django.core.exceptions import ValidationError
 from django.utils import timezone
 from django.core.validators import MinValueValidator
-
-# Use string references to avoid circular imports
-# 'doctor.Prescription' and 'reception.Patient'
 
 # ------------------------------
 # Medicine Table
@@ -253,14 +250,11 @@ class Medicine(models.Model):
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True, null=True)
     unit = models.CharField(max_length=50, blank=True, null=True)
-    price = models.DecimalField(
-        max_digits=10, 
-        decimal_places=2, 
-        validators=[MinValueValidator(0)]
-    )
+    price = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0)])
 
     def __str__(self):
         return self.name
+
 
 # ------------------------------
 # Medicine Batch Table
@@ -271,13 +265,14 @@ class MedicineBatch(models.Model):
     batch_number = models.CharField(max_length=50)
     quantity = models.PositiveIntegerField()
     expiry_date = models.DateField()
-    created_at = models.DateTimeField(default=timezone.now)
+    created_at = models.DateTimeField(default=timezone.now, editable=False)
 
     class Meta:
         unique_together = ('medicine', 'batch_number')
 
     def __str__(self):
         return f"{self.medicine.name} - {self.batch_number}"
+
 
 # ------------------------------
 # Medicine Stock Log Table
@@ -288,8 +283,9 @@ class MedicineStockLog(models.Model):
     change_type_choices = [('ADD', 'Added'), ('DISPENSE', 'Dispensed'), ('EXPIRED', 'Expired')]
     change_type = models.CharField(max_length=20, choices=change_type_choices)
     quantity_changed = models.IntegerField()
-    created_at = models.DateTimeField(default=timezone.now)
+    created_at = models.DateTimeField(default=timezone.now, editable=False)
     remarks = models.TextField(blank=True, null=True)
+
 
 # ------------------------------
 # Dispense Table
@@ -299,12 +295,13 @@ class Dispense(models.Model):
     prescription = models.ForeignKey("doctor.Prescription", on_delete=models.CASCADE, related_name='dispenses')
     patient = models.ForeignKey("reception.Patient", on_delete=models.CASCADE)
     total_amount = models.DecimalField(max_digits=10, decimal_places=2)
-    dispense_date = models.DateTimeField(default=timezone.now)
+    dispense_date = models.DateTimeField(default=timezone.now, editable=False)
     status_choices = [('Pending', 'Pending'), ('Completed', 'Completed')]
     status = models.CharField(max_length=20, choices=status_choices, default='Pending')
 
     def __str__(self):
         return f"Dispense {self.dispense_id} - {self.patient.first_name}"
+
 
 # ------------------------------
 # Dispense Item Table
@@ -314,14 +311,11 @@ class DispenseItem(models.Model):
     dispense = models.ForeignKey(Dispense, on_delete=models.CASCADE, related_name='items')
     batch = models.ForeignKey(MedicineBatch, on_delete=models.CASCADE)
     quantity = models.PositiveIntegerField()
-    price = models.DecimalField(
-        max_digits=10, 
-        decimal_places=2, 
-        validators=[MinValueValidator(0)]
-    )
+    price = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0)])
 
     def __str__(self):
         return f"{self.batch.medicine.name} x {self.quantity}"
+
 
 # ------------------------------
 # Medicine Bill Table
@@ -331,10 +325,20 @@ class MedicineBill(models.Model):
     dispense = models.OneToOneField(Dispense, on_delete=models.CASCADE)
     total_amount = models.DecimalField(max_digits=10, decimal_places=2)
     discount = models.DecimalField(max_digits=10, decimal_places=2, default=0, validators=[MinValueValidator(0)])
-    final_amount = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0)])
+    final_amount = models.DecimalField(max_digits=10, decimal_places=2, editable=False)
     payment_status_choices = [('Pending', 'Pending'), ('Paid', 'Paid')]
     payment_status = models.CharField(max_length=20, choices=payment_status_choices, default='Pending')
-    created_at = models.DateTimeField(default=timezone.now)
+    created_at = models.DateTimeField(default=timezone.now, editable=False)
+
+    def save(self, *args, **kwargs):
+        self.final_amount = max(self.total_amount - self.discount, 0)
+        super().save(*args, **kwargs)
+
+    def clean(self):
+        if self.total_amount < 0:
+            raise ValidationError("Total amount cannot be negative")
+        if self.final_amount < 0:
+            raise ValidationError("Final amount cannot be negative")
 
     def __str__(self):
         return f"Bill {self.bill_id} - {self.dispense.patient.first_name}"

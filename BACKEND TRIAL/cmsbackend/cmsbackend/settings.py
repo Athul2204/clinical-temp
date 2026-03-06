@@ -40,18 +40,15 @@ INSTALLED_APPS = [
 
     # Your apps
     'administration',
-    'reception',
+    'authentication',
     'doctor',
     'labtechnician',
     'pharmacist',
-    'cmsbackend',
-
-    # Third-party apps
-    'rest_framework',
+    'reception',
 ]
 
 
-AUTH_USER_MODEL = 'administration.User'
+
 
 
 MIDDLEWARE = [
@@ -99,7 +96,7 @@ DATABASES = {
         'ENGINE': 'django.db.backends.mysql',
         'NAME': 'CMS_DB_TRIAL',
         'USER': 'root',
-        'PASSWORD' :'1234',
+        'PASSWORD' :'admin',
         'HOST': 'localhost',
         'POST':3306
     }
