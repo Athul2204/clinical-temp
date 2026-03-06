@@ -213,7 +213,7 @@ class Patient(models.Model):
         return f"{self.first_name} {self.last_name}"
 
 
-# ------------------------------
+
 # Doctor Availability Table
 # ------------------------------
 class DoctorAvailability(models.Model):
@@ -227,7 +227,7 @@ class DoctorAvailability(models.Model):
         unique_together = ('doctor', 'available_date', 'start_time', 'end_time')
 
     def __str__(self):
-        return f"{self.doctor.user.username} on {self.available_date}"
+        return f"{self.doctor.staff.user.username} on {self.available_date}"
 
 
 # ------------------------------
@@ -249,8 +249,7 @@ class Appointment(models.Model):
         unique_together = ('doctor', 'appointment_date', 'appointment_time')
 
     def __str__(self):
-        return f"{self.patient.first_name} with Dr.{self.doctor.user.username} on {self.appointment_date}"
-
+        return f"{self.patient.first_name} with Dr.{self.doctor.staff.user.username} on {self.appointment_date}"
 
 # ------------------------------
 # Consultation Billing Table
