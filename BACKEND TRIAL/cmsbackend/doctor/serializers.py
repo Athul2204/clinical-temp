@@ -1,5 +1,12 @@
 from rest_framework import serializers
 from reception.models import Appointment, Patient
+from doctor.models import Consultation, Prescription,LabTestRequest, LabTestRequestItem, PrescriptionItem
+from labtechnician.models import LabResult,LabTest
+from django.utils import timezone
+from django.db import transaction
+from pharmacist.models import Medicine
+from administration.models import DoctorProfile
+
 
 
 class PatientBasicSerializer(serializers.ModelSerializer):
@@ -29,10 +36,6 @@ class TodayAppointmentSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
-from rest_framework import serializers
-from reception.models import Appointment, Patient
-from doctor.models import Consultation, Prescription
-from labtechnician.models import LabResult
 
 
 # -------------------------
@@ -116,10 +119,6 @@ class LabResultSerializer(serializers.ModelSerializer):
             "created_at"
         ]
 
-from rest_framework import serializers
-from doctor.models import Consultation
-from reception.models import Appointment
-from django.utils import timezone
 
 
 class ConsultationCreateSerializer(serializers.ModelSerializer):
@@ -224,11 +223,6 @@ class ConsultationCreateSerializer(serializers.ModelSerializer):
 
         return consultation
     
-from rest_framework import serializers
-from django.db import transaction
-
-from doctor.models import LabTestRequest, LabTestRequestItem, Consultation
-from labtechnician.models import LabTest
 
 
 # ----------------------------
@@ -330,8 +324,7 @@ class LabTestRequestSerializer(serializers.ModelSerializer):
 
         return lab_request
 
-from rest_framework import serializers
-from labtechnician.models import LabResult
+
 
 
 class LabResultViewSerializer(serializers.ModelSerializer):
@@ -352,12 +345,7 @@ class LabResultViewSerializer(serializers.ModelSerializer):
             "created_at"
         ] 
 
-from rest_framework import serializers
-from django.db import transaction
 
-from doctor.models import Prescription, PrescriptionItem, Consultation
-from pharmacist.models import Medicine
-from administration.models import DoctorProfile
 
 
 # ---------------------------------
