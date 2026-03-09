@@ -11,9 +11,10 @@ from datetime import date
 # ------------------------------
 
 phone_validator = RegexValidator(
-    regex=r'^[0-9]{10}$',
-    message="Phone number must be exactly 10 digits"
+    regex=r'^\d{10}$',
+    message="Phone number must contain exactly 10 digits"
 )
+
 
 name_validator = RegexValidator(
     regex=r'^[A-Za-z ]+$',
@@ -66,20 +67,11 @@ class Patient(models.Model):
         ('Other', 'Other')
     ]
 
-    gender = models.CharField(
-        max_length=10,
-        choices=gender_choices
-    )
+    gender = models.CharField(max_length=10, choices=gender_choices)
 
     blood_group_choices = [
-        ('A+', 'A+'),
-        ('A-', 'A-'),
-        ('B+', 'B+'),
-        ('B-', 'B-'),
-        ('AB+', 'AB+'),
-        ('AB-', 'AB-'),
-        ('O+', 'O+'),
-        ('O-', 'O-'),
+        ('A+', 'A+'), ('A-', 'A-'), ('B+', 'B+'), ('B-', 'B-'),
+        ('AB+', 'AB+'), ('AB-', 'AB-'), ('O+', 'O+'), ('O-', 'O-'),
     ]
 
     blood_group = models.CharField(
@@ -107,7 +99,6 @@ class Patient(models.Model):
         editable=False
     )
 
-    # ✅ Duplicate patient validation
     def clean(self):
 
         duplicate = Patient.objects.filter(
@@ -132,11 +123,13 @@ class Patient(models.Model):
                    (self.date_of_birth.month, self.date_of_birth.day))
             )
 
-        self.full_clean()  # ensures validation runs
+        self.full_clean()
         super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.first_name} {self.last_name}"
+    
+    
 
 
 # ------------------------------
