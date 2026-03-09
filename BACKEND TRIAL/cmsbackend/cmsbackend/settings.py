@@ -96,9 +96,9 @@ DATABASES = {
         'ENGINE': 'django.db.backends.mysql',
         'NAME': 'CMS_DB_TRIAL',
         'USER': 'root',
-        'PASSWORD' :'1234',
+        'PASSWORD' :'faith',
         'HOST': 'localhost',
-        'POST':3306
+        'PORT':3306
     }
 }
 
