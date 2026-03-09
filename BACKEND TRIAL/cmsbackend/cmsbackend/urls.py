@@ -19,9 +19,16 @@ from django.contrib import admin
 from django.urls import path, include
 
 urlpatterns = [
+
     path('admin/', admin.site.urls),
+
+    # authentication
+    path('api/auth/', include('authentication.urls')),
+
+    # other modules
+    path('api/admin/', include('administration.urls')),
     path('api/reception/', include('reception.urls')),
-    path("doctor/", include("doctor.urls")),
+    path('doctor/', include('doctor.urls')),
     path('api/pharmacist/', include('pharmacist.urls')),
     path('api/lab/', include('labtechnician.urls')),
 ]
