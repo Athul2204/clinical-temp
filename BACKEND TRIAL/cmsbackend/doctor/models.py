@@ -194,8 +194,6 @@ class Consultation(models.Model):
         self.full_clean()
         super().save(*args, **kwargs)
         # Update appointment status
-        self.appointment.status = "Completed"
-        self.appointment.save(update_fields=["status"])
 
     def __str__(self):
         return self.consultation_code
@@ -242,16 +240,30 @@ class Prescription(models.Model):
         super().save(*args, **kwargs)
 
     def send_to_pharmacy(self):
+
         if not self.items.exists():
             raise ValidationError("Cannot send empty prescription")
+
         lab_request = getattr(self.consultation, "lab_request", None)
         if lab_request and lab_request.status == "Pending":
-            raise ValidationError("Cannot send prescription while lab tests are pending")
+            raise ValidationError(
+                "Cannot send prescription while lab tests are pending"
+            )
+
         if self.status != "Draft":
-            raise ValidationError("Only draft prescriptions can be sent")
+            raise ValidationError(
+                "Only draft prescriptions can be sent"
+            )
+
+        # ✅ Update prescription status
         self.status = "Sent"
         self.sent_at = timezone.now()
         self.save(update_fields=["status", "sent_at"])
+
+        # ✅ NOW mark appointment as Completed
+        appointment = self.consultation.appointment
+        appointment.status = "Completed"
+        appointment.save(update_fields=["status"])
 
     def __str__(self):
         return self.prescription_code
