@@ -1,22 +1,41 @@
-from django.urls import path, include
-from rest_framework.routers import DefaultRouter
+from django.urls import path
 from .views import (
-    StaffProfileViewSet,
-    DoctorProfileViewSet,
-    ReceptionistProfileViewSet,
-    LabTechnicianProfileViewSet,
-    PharmacistProfileViewSet,
-    AuditLogViewSet
+    StaffListView,
+    CreateStaffView,
+    DoctorListView,
+    CreateDoctorView,
+    ReceptionistListView,
+    CreateReceptionistView,
+    LabTechnicianListView,
+    CreateLabTechnicianView,
+    PharmacistListView,
+    CreatePharmacistView,
+    AuditLogListView
 )
 
-router = DefaultRouter()
-router.register(r'staff', StaffProfileViewSet, basename='staff')
-router.register(r'doctors', DoctorProfileViewSet, basename='doctor')
-router.register(r'receptionists', ReceptionistProfileViewSet, basename='receptionist')
-router.register(r'labtechnicians', LabTechnicianProfileViewSet, basename='labtechnician')
-router.register(r'pharmacists', PharmacistProfileViewSet, basename='pharmacist')
-router.register(r'auditlogs', AuditLogViewSet, basename='auditlog')
-
 urlpatterns = [
-    path('api/', include(router.urls)),
+
+    # Staff
+    path('staff/', StaffListView.as_view()),
+    path('staff/create/', CreateStaffView.as_view()),
+
+    # Doctor
+    path('doctors/', DoctorListView.as_view()),
+    path('doctors/create/', CreateDoctorView.as_view()),
+
+    # Receptionist
+    path('receptionists/', ReceptionistListView.as_view()),
+    path('receptionists/create/', CreateReceptionistView.as_view()),
+
+    # Lab Technician
+    path('lab-technicians/', LabTechnicianListView.as_view()),
+    path('lab-technicians/create/', CreateLabTechnicianView.as_view()),
+
+    # Pharmacist
+    path('pharmacists/', PharmacistListView.as_view()),
+    path('pharmacists/create/', CreatePharmacistView.as_view()),
+
+    # Audit Logs
+    path('audit-logs/', AuditLogListView.as_view()),
+
 ]
