@@ -95,9 +95,9 @@ WSGI_APPLICATION = 'cmsbackend.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'backend_trial',
+        'NAME': 'CMS_DB_TRIAL',
         'USER': 'root',
-        'PASSWORD' :'1234',
+        'PASSWORD' :'newpassword',
         'HOST': 'localhost',
         'PORT':3306
     }
