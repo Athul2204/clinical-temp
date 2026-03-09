@@ -37,6 +37,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'rest_framework_simplejwt',
 
     # Your apps
     'administration',
@@ -96,7 +97,7 @@ DATABASES = {
         'ENGINE': 'django.db.backends.mysql',
         'NAME': 'CMS_DB_TRIAL',
         'USER': 'root',
-        'PASSWORD' :'admin',
+        'PASSWORD' :'1234',
         'HOST': 'localhost',
         'POST':3306
     }
@@ -145,3 +146,32 @@ STATIC_ROOT = BASE_DIR / 'static'
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+
+
+
+from datetime import timedelta
+
+REST_FRAMEWORK = {
+
+    "DEFAULT_AUTHENTICATION_CLASSES": (
+
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
+
+    ),
+
+    "DEFAULT_PERMISSION_CLASSES": (
+
+        "rest_framework.permissions.IsAuthenticated",
+
+    )
+}
+
+from datetime import timedelta
+
+SIMPLE_JWT = {
+
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
+
+    'AUTH_HEADER_TYPES': ('Bearer',),
+}
