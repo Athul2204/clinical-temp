@@ -4,5 +4,9 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+<<<<<<< HEAD
 
 cmsbackend/cmsbackend/settings.py
+=======
+cmsbackend/cmsbackend/settings.py/
+>>>>>>> be972ed422d986d0beb8f8cc178c0b537a013aaa

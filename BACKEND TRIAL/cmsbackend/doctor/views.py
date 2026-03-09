@@ -1,4 +1,3 @@
-
 from django.shortcuts import render
 from django.utils import timezone
 
@@ -75,6 +74,12 @@ class ConsultationPageView(APIView):
 
         patient = appointment.patient
 
+        # 🔹 Current consultation (only this appointment)
+        current_consultation = Consultation.objects.filter(
+            appointment=appointment
+        ).first()
+
+        # 🔹 Previous consultations (exclude current appointment)
         consultations = Consultation.objects.filter(
             appointment__patient=patient
         ).exclude(
@@ -94,6 +99,12 @@ class ConsultationPageView(APIView):
             "appointment": AppointmentSerializer(appointment).data,
 
             "patient": PatientDetailSerializer(patient).data,
+
+            # ✅ NEW FIELD
+            "current_consultation": 
+                PreviousConsultationSerializer(
+                    current_consultation
+                ).data if current_consultation else None,
 
             "previous_consultations": PreviousConsultationSerializer(
                 consultations,
@@ -118,7 +129,6 @@ class ConsultationPageView(APIView):
             },
             status=status.HTTP_200_OK
         )
-
 
 # ===============================
 # 3️⃣ CREATE CONSULTATION

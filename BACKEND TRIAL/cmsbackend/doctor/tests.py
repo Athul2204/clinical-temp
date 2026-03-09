@@ -8,6 +8,7 @@ from administration.models import StaffProfile, DoctorProfile
 from reception.models import Patient, Appointment
 from doctor.models import Consultation
 from labtechnician.models import LabTest
+from datetime import timedelta
 
 
 # ----------------------------------------
@@ -210,6 +211,40 @@ class TestCreateConsultationAPI(TestCase):
 
         self.assertEqual(response.status_code, 400)
 
+    def test_consultation_cancelled_appointment(self):
+
+        self.appointment.status = "Cancelled"
+        self.appointment.save()
+
+        data = {
+            "appointment": self.appointment.appointment_id,
+            "symptoms": "Fever",
+            "diagnosis": "Viral",
+            "vitals": "Normal",
+            "advice": "Rest"
+        }
+
+        response = self.client.post("/doctor/consultations/", data)
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_consultation_not_today(self):
+
+        self.appointment.appointment_date = timezone.now().date() - timedelta(days=1)
+        self.appointment.save()
+
+        data = {
+            "appointment": self.appointment.appointment_id,
+            "symptoms": "Fever",
+            "diagnosis": "Viral",
+            "vitals": "Normal",
+            "advice": "Rest"
+        }
+
+        response = self.client.post("/doctor/consultations/", data)
+
+        self.assertEqual(response.status_code, 400)
+
 
 # ----------------------------------------
 # Create Lab Test Request Tests
@@ -284,6 +319,48 @@ class TestCreateLabTestRequestAPI(TestCase):
         response = self.client.post("/doctor/lab-test-request/", data, format="json")
 
         self.assertEqual(response.status_code, 201)
+
+    def test_duplicate_lab_request(self):
+
+        data = {
+            "consultation": self.consultation.id,
+            "doctor": self.doctor.doctor_id,
+            "notes": "Check infection",
+            "tests": [
+                {"lab_test": self.lab_test.test_id}
+            ]
+        }
+
+        self.client.post("/doctor/lab-test-request/", data, format="json")
+        response = self.client.post("/doctor/lab-test-request/", data, format="json")
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_lab_request_doctor_mismatch(self):
+
+        other_user = User.objects.create(username="doc2")
+        other_staff = StaffProfile.objects.create(
+            user=other_user,
+            role="Doctor",
+            phone="+911111111111"
+        )
+        other_doctor = DoctorProfile.objects.create(
+            staff=other_staff,
+            specialization="General"
+        )
+
+        data = {
+            "consultation": self.consultation.id,
+            "doctor": other_doctor.doctor_id,
+            "notes": "Check infection",
+            "tests": [
+                {"lab_test": self.lab_test.test_id}
+            ]
+        }
+
+        response = self.client.post("/doctor/lab-test-request/", data, format="json")
+
+        self.assertEqual(response.status_code, 400)
 
 
 # ----------------------------------------
@@ -427,3 +504,51 @@ class TestCreatePrescriptionAPI(TestCase):
         response = self.client.post("/doctor/prescriptions/", data, format="json")
 
         self.assertEqual(response.status_code, 201)
+    
+    def test_duplicate_prescription(self):
+
+        data = {
+            "consultation": self.consultation.id,
+            "doctor": self.doctor.doctor_id,
+            "items": [
+                {
+                    "medicine_name": "Paracetamol",
+                    "dosage": "500mg",
+                    "frequency": "2 times",
+                    "duration": 5
+                }
+            ]
+        }
+
+        self.client.post("/doctor/prescriptions/", data, format="json")
+        response = self.client.post("/doctor/prescriptions/", data, format="json")
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_prescription_lab_pending(self):
+
+        from doctor.models import LabTestRequest
+
+        LabTestRequest.objects.create(
+            consultation=self.consultation,
+            doctor=self.doctor,
+            notes="Test",
+            status="Pending"
+        )
+
+        data = {
+            "consultation": self.consultation.id,
+            "doctor": self.doctor.doctor_id,
+            "items": [
+                {
+                    "medicine_name": "Paracetamol",
+                    "dosage": "500mg",
+                    "frequency": "2 times",
+                    "duration": 5
+                }
+            ]
+        }
+
+        response = self.client.post("/doctor/prescriptions/", data, format="json")
+
+        self.assertEqual(response.status_code, 400)
