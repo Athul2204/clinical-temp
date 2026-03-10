@@ -5,11 +5,4 @@ __pycache__/
 *.pyo
 *.pyd
 
-<<<<<<< HEAD
-
-cmsbackend/cmsbackend/settings.py
-
-
-=======
-cmsbackend/cmsbackend/settings.py
->>>>>>> 93b639caf0ea1d4ef9019a1a66ddf18b0f0d4cae
+cmsbackend/cmsbackend/settings.py/
