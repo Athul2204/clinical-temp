@@ -51,6 +51,7 @@ class PatientDetailSerializer(serializers.ModelSerializer):
             "last_name",
             "age",
             "gender",
+            "blood_group",
             "phone",
             "membership_status"
         ]
