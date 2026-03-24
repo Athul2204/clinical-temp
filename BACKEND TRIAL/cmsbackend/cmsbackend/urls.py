@@ -12,7 +12,7 @@ urlpatterns = [
     # 📦 Modules (CLEAN & UNIQUE)
     path('api/administration/', include('administration.urls')),
     path('api/reception/', include('reception.urls')),
-    path('api/doctor/', include('doctor.urls')),
+    path('doctor/', include('doctor.urls')),
     path('api/pharmacist/', include('pharmacist.urls')),
     path('api/labtechnician/', include('labtechnician.urls')),
 ]
