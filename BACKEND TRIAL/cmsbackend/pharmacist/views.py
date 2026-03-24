@@ -1,23 +1,26 @@
-# cmsbackend/pharmacist/views.py
+
 from rest_framework import viewsets
-from .models import Medicine, MedicineBatch, Dispense, DispenseItem, MedicineBill
-from .serializers import MedicineSerializer, MedicineBatchSerializer, DispenseSerializer, DispenseItemSerializer, MedicineBillSerializer
+
+from rest_framework.viewsets import ModelViewSet,ReadOnlyModelViewSet
 from rest_framework.response import Response
 from rest_framework import status
-# class MedicineViewSet(viewsets.ModelViewSet):
-#     queryset = Medicine.objects.all()
-#     serializer_class = MedicineSerializer
-from rest_framework.viewsets import ModelViewSet
-from rest_framework.response import Response
-from rest_framework import status
-from .models import Medicine
-from .serializers import MedicineSerializer
+from .serializers import MedicineSerializer, MedicineBatchSerializer, DispenseSerializer, DispenseItemSerializer, MedicineBillSerializer,MedicineStockLogSerializer
+
+from .models import Medicine, MedicineBatch, Dispense, DispenseItem, MedicineBill,MedicineStockLog
+
+from rest_framework.permissions import IsAuthenticated
+from authentication.permissions import IsPharmacist
+from rest_framework.filters import SearchFilter
+from django_filters.rest_framework import DjangoFilterBackend
 
 
 class MedicineViewSet(ModelViewSet):
 
     queryset = Medicine.objects.all()
     serializer_class = MedicineSerializer
+    filter_backends = [SearchFilter]
+    search_fields = ['name']  
+    permission_classes = [IsAuthenticated,IsPharmacist]
 
     def create(self, request, *args, **kwargs):
 
@@ -64,7 +67,9 @@ class MedicineBatchViewSet(ModelViewSet):
 
     queryset = MedicineBatch.objects.all()
     serializer_class = MedicineBatchSerializer
-
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ['medicine'] 
+    permission_classes = [IsAuthenticated,IsPharmacist]
     def create(self, request, *args, **kwargs):
 
         serializer = self.get_serializer(data=request.data)
@@ -90,6 +95,7 @@ class DispenseViewSet(ModelViewSet):
 
     queryset = Dispense.objects.all()
     serializer_class = DispenseSerializer
+    permission_classes = [IsAuthenticated,IsPharmacist]
 
     def create(self, request, *args, **kwargs):
 
@@ -104,6 +110,15 @@ class DispenseViewSet(ModelViewSet):
             },
             status=status.HTTP_201_CREATED
         )
+class DispenseItemViewSet(ReadOnlyModelViewSet):
+    queryset = DispenseItem.objects.all()
+    serializer_class = DispenseItemSerializer
+    permission_classes = [IsAuthenticated,IsPharmacist]
+
+class MedicineStockLogViewSet(ReadOnlyModelViewSet):
+    queryset = MedicineStockLog.objects.all()
+    serializer_class = MedicineStockLogSerializer
+    permission_classes = [IsAuthenticated,IsPharmacist]
 
 # class MedicineBillViewSet(viewsets.ModelViewSet):
 #     queryset = MedicineBill.objects.all()
@@ -112,6 +127,7 @@ class MedicineBillViewSet(ModelViewSet):
 
     queryset = MedicineBill.objects.all()
     serializer_class = MedicineBillSerializer
+    permission_classes = [IsAuthenticated,IsPharmacist]
 
     def create(self, request, *args, **kwargs):
 
