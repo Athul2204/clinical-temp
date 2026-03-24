@@ -1,14 +1,13 @@
 from django.test import TestCase
 from rest_framework.test import APIClient
 from django.utils import timezone
-from datetime import time, date
+from datetime import time, date, timedelta
+from django.contrib.auth.models import User, Group
 
-from django.contrib.auth.models import User
 from administration.models import StaffProfile, DoctorProfile
 from reception.models import Patient, Appointment
 from doctor.models import Consultation
 from labtechnician.models import LabTest
-from datetime import timedelta
 
 
 # ----------------------------------------
@@ -20,11 +19,17 @@ class TestTodayAppointmentsAPI(TestCase):
 
         self.client = APIClient()
 
+        # Create User
         self.user = User.objects.create(
             username="doctor1",
             email="doc@test.com"
         )
 
+        # 🔥 ADD DOCTOR GROUP FIX
+        doctor_group, _ = Group.objects.get_or_create(name="Doctor")
+        self.user.groups.add(doctor_group)
+
+        # Create Staff + DoctorProfile
         self.staff = StaffProfile.objects.create(
             user=self.user,
             role="Doctor",
@@ -36,21 +41,23 @@ class TestTodayAppointmentsAPI(TestCase):
             specialization="General"
         )
 
+        # Create Patient
         self.patient = Patient.objects.create(
             first_name="John",
             last_name="Doe",
             email="john@test.com",
             phone="9999999999",
-            date_of_birth=date(1995,1,1),
+            date_of_birth=date(1995, 1, 1),
             gender="Male",
             address="Test Address"
         )
 
+        # Create Appointment
         self.appointment = Appointment.objects.create(
             patient=self.patient,
             doctor=self.doctor,
             appointment_date=timezone.now().date(),
-            appointment_time=time(10,0),
+            appointment_time=time(10, 0),
             token_number=1,
             reason="Fever"
         )
@@ -88,6 +95,10 @@ class TestConsultationPageAPI(TestCase):
             email="doc@test.com"
         )
 
+        # 🔥 ADD DOCTOR GROUP FIX
+        doctor_group, _ = Group.objects.get_or_create(name="Doctor")
+        self.user.groups.add(doctor_group)
+
         self.staff = StaffProfile.objects.create(
             user=self.user,
             role="Doctor",
@@ -104,7 +115,7 @@ class TestConsultationPageAPI(TestCase):
             last_name="Doe",
             email="john@test.com",
             phone="9999999999",
-            date_of_birth=date(1995,1,1),
+            date_of_birth=date(1995, 1, 1),
             gender="Male",
             address="Test Address"
         )
@@ -113,7 +124,7 @@ class TestConsultationPageAPI(TestCase):
             patient=self.patient,
             doctor=self.doctor,
             appointment_date=timezone.now().date(),
-            appointment_time=time(10,0),
+            appointment_time=time(10, 0),
             token_number=1,
             reason="Fever"
         )
@@ -123,7 +134,6 @@ class TestConsultationPageAPI(TestCase):
     def test_consultation_page_success(self):
 
         url = f"/doctor/consultation/{self.appointment.appointment_id}/"
-
         response = self.client.get(url)
 
         self.assertEqual(response.status_code, 200)
@@ -131,8 +141,9 @@ class TestConsultationPageAPI(TestCase):
     def test_consultation_invalid_appointment(self):
 
         response = self.client.get("/doctor/consultation/999/")
-
         self.assertEqual(response.status_code, 404)
+
+
 
 
 # ----------------------------------------
@@ -144,11 +155,17 @@ class TestCreateConsultationAPI(TestCase):
 
         self.client = APIClient()
 
+        # Create User
         self.user = User.objects.create(
             username="doctor1",
             email="doc@test.com"
         )
 
+        # 🔥 ADD DOCTOR GROUP FIX
+        doctor_group, _ = Group.objects.get_or_create(name="Doctor")
+        self.user.groups.add(doctor_group)
+
+        # Create Staff + DoctorProfile
         self.staff = StaffProfile.objects.create(
             user=self.user,
             role="Doctor",
@@ -160,21 +177,23 @@ class TestCreateConsultationAPI(TestCase):
             specialization="General"
         )
 
+        # Create Patient
         self.patient = Patient.objects.create(
             first_name="John",
             last_name="Doe",
             email="john@test.com",
             phone="9999999999",
-            date_of_birth=date(1995,1,1),
+            date_of_birth=date(1995, 1, 1),
             gender="Male",
             address="Test Address"
         )
 
+        # Create Appointment
         self.appointment = Appointment.objects.create(
             patient=self.patient,
             doctor=self.doctor,
             appointment_date=timezone.now().date(),
-            appointment_time=time(10,0),
+            appointment_time=time(10, 0),
             token_number=1,
             reason="Fever"
         )
@@ -206,7 +225,6 @@ class TestCreateConsultationAPI(TestCase):
         }
 
         self.client.post("/doctor/consultations/", data)
-
         response = self.client.post("/doctor/consultations/", data)
 
         self.assertEqual(response.status_code, 400)
@@ -255,11 +273,17 @@ class TestCreateLabTestRequestAPI(TestCase):
 
         self.client = APIClient()
 
+        # Create User
         self.user = User.objects.create(
             username="doctor1",
             email="doc@test.com"
         )
 
+        # 🔥 ADD DOCTOR GROUP FIX
+        doctor_group, _ = Group.objects.get_or_create(name="Doctor")
+        self.user.groups.add(doctor_group)
+
+        # Create Staff + DoctorProfile
         self.staff = StaffProfile.objects.create(
             user=self.user,
             role="Doctor",
@@ -271,25 +295,28 @@ class TestCreateLabTestRequestAPI(TestCase):
             specialization="General"
         )
 
+        # Create Patient
         self.patient = Patient.objects.create(
             first_name="John",
             last_name="Doe",
             email="john@test.com",
             phone="9999999999",
-            date_of_birth=date(1995,1,1),
+            date_of_birth=date(1995, 1, 1),
             gender="Male",
             address="Test Address"
         )
 
+        # Create Appointment
         self.appointment = Appointment.objects.create(
             patient=self.patient,
             doctor=self.doctor,
             appointment_date=timezone.now().date(),
-            appointment_time=time(10,0),
+            appointment_time=time(10, 0),
             token_number=1,
             reason="Fever"
         )
 
+        # Create Consultation
         self.consultation = Consultation.objects.create(
             appointment=self.appointment,
             symptoms="Fever",
@@ -298,6 +325,7 @@ class TestCreateLabTestRequestAPI(TestCase):
             advice="Rest"
         )
 
+        # Create Lab Test
         self.lab_test = LabTest.objects.create(
             test_name="Blood Test",
             cost=500
@@ -339,11 +367,17 @@ class TestCreateLabTestRequestAPI(TestCase):
     def test_lab_request_doctor_mismatch(self):
 
         other_user = User.objects.create(username="doc2")
+
+        # 🔥 ADD DOCTOR GROUP FIX FOR OTHER USER ALSO
+        doctor_group, _ = Group.objects.get_or_create(name="Doctor")
+        other_user.groups.add(doctor_group)
+
         other_staff = StaffProfile.objects.create(
             user=other_user,
             role="Doctor",
             phone="+911111111111"
         )
+
         other_doctor = DoctorProfile.objects.create(
             staff=other_staff,
             specialization="General"
@@ -377,6 +411,10 @@ class TestViewLabResultsAPI(TestCase):
             email="doc@test.com"
         )
 
+        # 🔥 ADD DOCTOR GROUP FIX
+        doctor_group, _ = Group.objects.get_or_create(name="Doctor")
+        self.user.groups.add(doctor_group)
+
         self.staff = StaffProfile.objects.create(
             user=self.user,
             role="Doctor",
@@ -393,7 +431,7 @@ class TestViewLabResultsAPI(TestCase):
             last_name="Doe",
             email="john@test.com",
             phone="9999999999",
-            date_of_birth=date(1995,1,1),
+            date_of_birth=date(1995, 1, 1),
             gender="Male",
             address="Test Address"
         )
@@ -402,7 +440,7 @@ class TestViewLabResultsAPI(TestCase):
             patient=self.patient,
             doctor=self.doctor,
             appointment_date=timezone.now().date(),
-            appointment_time=time(10,0),
+            appointment_time=time(10, 0),
             token_number=1,
             reason="Fever"
         )
@@ -420,7 +458,6 @@ class TestViewLabResultsAPI(TestCase):
     def test_view_lab_results_empty(self):
 
         url = f"/doctor/lab-results/{self.consultation.id}/"
-
         response = self.client.get(url)
 
         self.assertEqual(response.status_code, 200)
@@ -428,7 +465,6 @@ class TestViewLabResultsAPI(TestCase):
     def test_lab_results_invalid_consultation(self):
 
         response = self.client.get("/doctor/lab-results/999/")
-
         self.assertEqual(response.status_code, 404)
 
 
@@ -441,11 +477,17 @@ class TestCreatePrescriptionAPI(TestCase):
 
         self.client = APIClient()
 
+        # Create User
         self.user = User.objects.create(
             username="doctor1",
             email="doc@test.com"
         )
 
+        # 🔥 ADD DOCTOR GROUP FIX
+        doctor_group, _ = Group.objects.get_or_create(name="Doctor")
+        self.user.groups.add(doctor_group)
+
+        # Create Staff + DoctorProfile
         self.staff = StaffProfile.objects.create(
             user=self.user,
             role="Doctor",
@@ -457,25 +499,28 @@ class TestCreatePrescriptionAPI(TestCase):
             specialization="General"
         )
 
+        # Create Patient
         self.patient = Patient.objects.create(
             first_name="John",
             last_name="Doe",
             email="john@test.com",
             phone="9999999999",
-            date_of_birth=date(1995,1,1),
+            date_of_birth=date(1995, 1, 1),
             gender="Male",
             address="Test Address"
         )
 
+        # Create Appointment
         self.appointment = Appointment.objects.create(
             patient=self.patient,
             doctor=self.doctor,
             appointment_date=timezone.now().date(),
-            appointment_time=time(10,0),
+            appointment_time=time(10, 0),
             token_number=1,
             reason="Fever"
         )
 
+        # Create Consultation
         self.consultation = Consultation.objects.create(
             appointment=self.appointment,
             symptoms="Fever",
@@ -501,10 +546,14 @@ class TestCreatePrescriptionAPI(TestCase):
             ]
         }
 
-        response = self.client.post("/doctor/prescriptions/", data, format="json")
+        response = self.client.post(
+            "/doctor/prescriptions/",
+            data,
+            format="json"
+        )
 
         self.assertEqual(response.status_code, 201)
-    
+
     def test_duplicate_prescription(self):
 
         data = {
@@ -549,6 +598,10 @@ class TestCreatePrescriptionAPI(TestCase):
             ]
         }
 
-        response = self.client.post("/doctor/prescriptions/", data, format="json")
+        response = self.client.post(
+            "/doctor/prescriptions/",
+            data,
+            format="json"
+        )
 
         self.assertEqual(response.status_code, 400)

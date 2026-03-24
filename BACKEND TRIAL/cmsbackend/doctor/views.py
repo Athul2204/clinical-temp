@@ -1,14 +1,14 @@
-from django.shortcuts import render
 from django.utils import timezone
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 
+from authentication.utils import IsDoctor
+
 from reception.models import Appointment
 from doctor.models import Consultation, Prescription
 from labtechnician.models import LabResult
-from administration.models import DoctorProfile
 
 from .serializers import (
     TodayAppointmentSerializer,
@@ -25,14 +25,34 @@ from .serializers import (
 
 
 # ===============================
+# Helper: Get Logged-in Doctor
+# ===============================
+
+def get_logged_in_doctor(request):
+    try:
+        return request.user.staff_profile.doctor_profile
+    except AttributeError:
+        return None
+
+
+# ===============================
 # 1️⃣ TODAY APPOINTMENTS
 # ===============================
 
 class TodayAppointmentsView(APIView):
 
+    permission_classes = [IsDoctor]
+
     def get(self, request):
 
-        doctor = DoctorProfile.objects.first()
+        doctor = get_logged_in_doctor(request)
+
+        if not doctor:
+            return Response(
+                {"message": "Doctor profile not found"},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
         today = timezone.now().date()
 
         appointments = Appointment.objects.filter(
@@ -58,15 +78,24 @@ class TodayAppointmentsView(APIView):
 
 class ConsultationPageView(APIView):
 
+    permission_classes = [IsDoctor]
+
     def get(self, request, appointment_id):
+
+        doctor = get_logged_in_doctor(request)
+
+        if not doctor:
+            return Response(
+                {"message": "Doctor profile not found"},
+                status=status.HTTP_403_FORBIDDEN
+            )
 
         try:
             appointment = Appointment.objects.get(
-                appointment_id=appointment_id
+                appointment_id=appointment_id,
+                doctor=doctor  # 🔥 restrict to logged-in doctor
             )
-
         except Appointment.DoesNotExist:
-
             return Response(
                 {"message": "Appointment not found"},
                 status=status.HTTP_404_NOT_FOUND
@@ -74,12 +103,10 @@ class ConsultationPageView(APIView):
 
         patient = appointment.patient
 
-        # 🔹 Current consultation (only this appointment)
         current_consultation = Consultation.objects.filter(
             appointment=appointment
         ).first()
 
-        # 🔹 Previous consultations (exclude current appointment)
         consultations = Consultation.objects.filter(
             appointment__patient=patient
         ).exclude(
@@ -95,31 +122,27 @@ class ConsultationPageView(APIView):
         )
 
         data = {
-
             "appointment": AppointmentSerializer(appointment).data,
-
             "patient": PatientDetailSerializer(patient).data,
-
-            # ✅ NEW FIELD
-            "current_consultation": 
+            "current_consultation":
                 PreviousConsultationSerializer(
                     current_consultation
                 ).data if current_consultation else None,
-
-            "previous_consultations": PreviousConsultationSerializer(
-                consultations,
-                many=True
-            ).data,
-
-            "previous_prescriptions": PreviousPrescriptionSerializer(
-                prescriptions,
-                many=True
-            ).data,
-
-            "lab_results": LabResultSerializer(
-                lab_results,
-                many=True
-            ).data
+            "previous_consultations":
+                PreviousConsultationSerializer(
+                    consultations,
+                    many=True
+                ).data,
+            "previous_prescriptions":
+                PreviousPrescriptionSerializer(
+                    prescriptions,
+                    many=True
+                ).data,
+            "lab_results":
+                LabResultSerializer(
+                    lab_results,
+                    many=True
+                ).data
         }
 
         return Response(
@@ -130,11 +153,14 @@ class ConsultationPageView(APIView):
             status=status.HTTP_200_OK
         )
 
+
 # ===============================
 # 3️⃣ CREATE CONSULTATION
 # ===============================
 
 class CreateConsultationView(APIView):
+
+    permission_classes = [IsDoctor]
 
     def post(self, request):
 
@@ -144,7 +170,6 @@ class CreateConsultationView(APIView):
         )
 
         if serializer.is_valid():
-
             consultation = serializer.save()
 
             return Response(
@@ -167,6 +192,8 @@ class CreateConsultationView(APIView):
 
 class CreateLabTestRequestView(APIView):
 
+    permission_classes = [IsDoctor]
+
     def post(self, request):
 
         serializer = LabTestRequestSerializer(
@@ -175,7 +202,6 @@ class CreateLabTestRequestView(APIView):
         )
 
         if serializer.is_valid():
-
             lab_request = serializer.save()
 
             return Response(
@@ -198,15 +224,13 @@ class CreateLabTestRequestView(APIView):
 
 class ViewLabResults(APIView):
 
+    permission_classes = [IsDoctor]
+
     def get(self, request, consultation_id):
 
         try:
-            consultation = Consultation.objects.get(
-                id=consultation_id
-            )
-
+            consultation = Consultation.objects.get(id=consultation_id)
         except Consultation.DoesNotExist:
-
             return Response(
                 {"message": "Consultation not found"},
                 status=status.HTTP_404_NOT_FOUND
@@ -236,6 +260,8 @@ class ViewLabResults(APIView):
 
 class CreatePrescriptionView(APIView):
 
+    permission_classes = [IsDoctor]
+
     def post(self, request):
 
         serializer = PrescriptionCreateSerializer(
@@ -244,7 +270,6 @@ class CreatePrescriptionView(APIView):
         )
 
         if serializer.is_valid():
-
             prescription = serializer.save()
 
             return Response(
