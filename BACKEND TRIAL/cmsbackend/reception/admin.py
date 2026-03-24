@@ -13,9 +13,13 @@ class PatientAdminForm(forms.ModelForm):
         fields = "__all__"
 
     phone = forms.CharField(
+        max_length=10,
         widget=forms.TextInput(attrs={
-            "pattern": "[0-9]*",
+            "type": "tel",
+            "maxlength": "10",
+            "pattern": "[0-9]{10}",
             "inputmode": "numeric",
+            "oninput": "this.value = this.value.replace(/[^0-9]/g, '')"
         })
     )
 
