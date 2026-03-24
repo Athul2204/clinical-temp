@@ -99,7 +99,7 @@ DATABASES = {
         'NAME': 'cms_db_trial',
 
         'USER': 'root',
-        'PASSWORD' :'1234',
+        'PASSWORD' :'newpassword',
         'HOST': 'localhost',
         'PORT':3306
     }
