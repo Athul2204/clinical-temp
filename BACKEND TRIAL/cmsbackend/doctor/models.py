@@ -2,7 +2,7 @@ from django.db import models
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 from django.core.validators import MinValueValidator
-
+from pharmacist.models import Medicine
 # =========================
 # CONSULTATION
 # =========================
@@ -120,7 +120,10 @@ class PrescriptionItem(models.Model):
     prescription = models.ForeignKey(
         Prescription, on_delete=models.CASCADE, related_name="items"
     )
-    medicine_name = models.CharField(max_length=150)
+    medicine_name = models.ForeignKey(
+        Medicine,
+        on_delete=models.PROTECT
+    )
     dosage = models.CharField(max_length=50)
     frequency = models.CharField(max_length=50)
     duration = models.PositiveIntegerField(validators=[MinValueValidator(1)])

@@ -95,13 +95,14 @@ class PreviousConsultationSerializer(serializers.ModelSerializer):
 # Previous Prescription
 # -------------------------
 class PreviousPrescriptionSerializer(serializers.ModelSerializer):
-
+    items = PrescriptionItemSerializer(many=True, read_only=True)
     class Meta:
         model = Prescription
         fields = [
             "prescription_code",
             "status",
-            "created_at"
+            "created_at",
+            "items"
         ]
 
 
@@ -353,11 +354,16 @@ class LabResultViewSerializer(serializers.ModelSerializer):
 # Prescription Item Serializer
 # ---------------------------------
 class PrescriptionItemSerializer(serializers.ModelSerializer):
-
+    medicine_display = serializers.CharField(
+    source="medicine_name.name",
+    read_only=True
+)
+  
     class Meta:
         model = PrescriptionItem
         fields = [
             "medicine_name",
+            "medicine_display",
             "dosage",
             "frequency",
             "duration",
@@ -370,15 +376,6 @@ class PrescriptionItemSerializer(serializers.ModelSerializer):
         if value <= 0:
             raise serializers.ValidationError(
                 "Duration must be greater than zero"
-            )
-
-        return value
-
-    def validate_medicine_name(self, value):
-
-        if len(value.strip()) < 2:
-            raise serializers.ValidationError(
-                "Medicine name too short"
             )
 
         return value
