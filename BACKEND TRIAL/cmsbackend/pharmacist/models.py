@@ -272,13 +272,13 @@ class Medicine(models.Model):
 class MedicineBatch(models.Model):
     batch_id = models.AutoField(primary_key=True)
     medicine = models.ForeignKey(Medicine, on_delete=models.CASCADE, related_name='batches')
-    batch_number = models.CharField(max_length=50)
+    batch_number = models.CharField(max_length=50,unique=True,blank=True)
     quantity = models.PositiveIntegerField()
     expiry_date = models.DateField()
     created_at = models.DateTimeField(default=timezone.now, editable=False)
 
-    class Meta:
-        unique_together = ('medicine', 'batch_number')
+    # class Meta:
+    #     unique_together = ('medicine', 'batch_number')
     def clean(self):
         #  ADDED: expiry date must be in the future
         if self.expiry_date and self.expiry_date < timezone.now().date():
@@ -287,8 +287,37 @@ class MedicineBatch(models.Model):
         #  ADDED: quantity must be at least 1
         if self.quantity is not None and self.quantity < 1:
             raise ValidationError({'quantity': 'Batch quantity must be at least 1.'})
+    # def save(self, *args, **kwargs):
+    #     if not self.batch_number:
+    #         last_batch = MedicineBatch.objects.filter(
+    #             medicine=self.medicine
+    #         ).order_by('-batch_id').first()
+
+    #         if last_batch:
+    #             last_number = int(last_batch.batch_number[1:])  # remove 'B'
+    #             next_number = last_number + 1
+    #         else:
+    #             next_number = 1
+
+    #         self.batch_number = f"B{str(next_number).zfill(3)}"  # B001, B002
+
+    #     self.full_clean()        # ← this triggers clean() before saving
+    #     super().save(*args, **kwargs)
     def save(self, *args, **kwargs):
-        self.full_clean()        # ← this triggers clean() before saving
+        if not self.batch_number:
+            # Global last batch (not per-medicine, since batch_number is globally unique)
+            last_batch = MedicineBatch.objects.order_by('-batch_id').first()
+            next_number = (int(last_batch.batch_number[1:]) + 1) if last_batch else 1
+
+            # Loop until unique (avoids 500 error from full_clean)
+            candidate = f"B{str(next_number).zfill(3)}"
+            while MedicineBatch.objects.filter(batch_number=candidate).exists():
+                next_number += 1
+                candidate = f"B{str(next_number).zfill(3)}"
+
+            self.batch_number = candidate
+
+        self.full_clean()
         super().save(*args, **kwargs)
     def __str__(self):
         return f"{self.medicine.name} - {self.batch_number}"

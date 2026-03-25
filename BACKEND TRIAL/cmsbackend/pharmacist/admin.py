@@ -38,7 +38,7 @@ class DispenseAdmin(admin.ModelAdmin):
 
 # ------------------------------
 # Dispense Item Admin
-# ------------------------------
+# -------------------------A-----
 @admin.register(DispenseItem)
 class DispenseItemAdmin(admin.ModelAdmin):
     list_display = ('dispense', 'batch', 'quantity', 'price')

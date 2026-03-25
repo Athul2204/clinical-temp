@@ -114,6 +114,7 @@ from rest_framework import serializers
 from django.utils import timezone
 from datetime import timedelta
 from django.db import transaction
+import re
 from .models import (
     Medicine, MedicineBatch, MedicineStockLog,
     Dispense, DispenseItem, MedicineBill
@@ -134,21 +135,26 @@ class MedicineSerializer(serializers.ModelSerializer):
         model = Medicine
         fields = '__all__'
     #Important rule in DRF:SerializerMethodField uses get_<fieldname>,Since field name is:,total_stock,function must be:,get_total_stock
+    # def get_total_stock(self, obj):
+    #     #medicine = models.ForeignKey(Medicine),Django automatically creates:,medicinebatch_set,Meaning:,all batches belonging to this medicine,,.all(),.So:,,batches = all batches of that medicine
+    #     batches = obj.batches.all()
+    #     total = sum(batch.quantity for batch in batches)
+    #     return total
     def get_total_stock(self, obj):
-        #medicine = models.ForeignKey(Medicine),Django automatically creates:,medicinebatch_set,Meaning:,all batches belonging to this medicine,,.all(),.So:,,batches = all batches of that medicine
-        batches = obj.medicinebatch_set.all()
+        today = timezone.now().date()
+        batches = obj.batches.filter(expiry_date__gte=today)
         total = sum(batch.quantity for batch in batches)
         return total
     def get_expired_stock(self, obj):
         today = timezone.now().date()
-        batches = obj.medicinebatch_set.filter(expiry_date__lt=today)
+        batches = obj.batches.filter(expiry_date__lt=today)
         return sum(batch.quantity for batch in batches)
 
     def get_expiring_soon_stock(self, obj):
         today = timezone.now().date()
         next_30 = today + timedelta(days=30)
 
-        batches = obj.medicinebatch_set.filter(
+        batches = obj.batches.filter(
             expiry_date__gte=today,
             expiry_date__lte=next_30
         )
@@ -175,6 +181,8 @@ class MedicineBatchSerializer(serializers.ModelSerializer):
         write_only=True
     )
     medicine_details = MedicineSerializer(source='medicine',read_only=True) 
+    batch_number = serializers.CharField(required=False, allow_blank=True)
+
     class Meta:
         model = MedicineBatch
         fields = '__all__'
@@ -189,35 +197,48 @@ class MedicineBatchSerializer(serializers.ModelSerializer):
         if value < 1:
             raise serializers.ValidationError("Batch quantity must be at least 1.")
         return value
+    def validate_batch_number(self, value):
+        if value:  # only validate if user sends it
+            if not re.match(r'^B\d{3}$', value):
+                raise serializers.ValidationError(
+                    "Batch number must be in format B001, B002, etc."
+                )
+        return value
+    def validate_batch_number(self, value):
+        if value:  
+            if MedicineBatch.objects.filter(batch_number=value).exists():
+                raise serializers.ValidationError("Batch number already exists.")
+            return value
 
-    # ✅ Object-level validation (cross-field)
-    def validate(self, data):
-        medicine = data.get('medicine')
-        batch_number = data.get('batch_number')
+    #✅ Object-level validation (cross-field)
+    # def validate(self, data):
+    #     medicine = data.get('medicine')
+    #     batch_number = data.get('batch_number')
+    #     if batch_number:
 
-        # On update, exclude current instance from uniqueness check
-        instance = self.instance
-        qs = MedicineBatch.objects.filter(medicine=medicine, batch_number=batch_number)
-        if instance:
-            qs = qs.exclude(pk=instance.pk)
-        if qs.exists():
-            raise serializers.ValidationError(
-                "A batch with this batch number already exists for this medicine."
-            )
-        return data
-    def create(self, validated_data):
-        with transaction.atomic():
+    #     # On update, exclude current instance from uniqueness check
+    #         instance = self.instance
+    #         qs = MedicineBatch.objects.filter(medicine=medicine, batch_number=batch_number)
+    #         if instance:
+    #             qs = qs.exclude(pk=instance.pk)
+    #         if qs.exists():
+    #             raise serializers.ValidationError(
+    #                 "A batch with this batch number already exists for this medicine."
+    #             )
+    #     return data
+    # def create(self, validated_data):
+    #     with transaction.atomic():
 
-            batch = super().create(validated_data)
+    #         batch = super().create(validated_data)
 
-            MedicineStockLog.objects.create(
-                batch=batch,
-                change_type='ADD',
-                quantity_changed=batch.quantity,
-                remarks="Batch added to inventory"
-            )
+    #         MedicineStockLog.objects.create(
+    #             batch=batch,
+    #             change_type='ADD',
+    #             quantity_changed=batch.quantity,
+    #             remarks="Batch added to inventory"
+    #         )
 
-        return batch
+    #     return batch
     
 # ------------------------------
 # Medicine Stock Log Serializer
@@ -385,11 +406,11 @@ class DispenseSerializer(serializers.ModelSerializer):
                 batch.save()
 
                 # create stock log
-                MedicineStockLog.objects.create(
-                    batch=batch,
-                    change_type='DISPENSE',
-                    quantity_changed=-quantity
-                )
+                # MedicineStockLog.objects.create(
+                #     batch=batch,
+                #     change_type='DISPENSE',
+                #     quantity_changed=-quantity
+                # )
 
                 total_amount += item_total
 
