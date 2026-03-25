@@ -60,3 +60,7 @@ class ConsultationBillViewSet(viewsets.ModelViewSet):
     queryset = ConsultationBill.objects.all().order_by("-created_at")
     serializer_class = ConsultationBillSerializer
     permission_classes = [IsAuthenticated]
+
+
+
+    
