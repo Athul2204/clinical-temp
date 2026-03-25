@@ -37,7 +37,9 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'rest_framework',
     'rest_framework_simplejwt',
+    'django_filters',
 
     # Your apps
     'administration',
@@ -97,7 +99,6 @@ DATABASES = {
         'ENGINE': 'django.db.backends.mysql',
 
         'NAME': 'cms_db_trial',
-
         'USER': 'root',
         'PASSWORD' :'newpassword',
         'HOST': 'localhost',
@@ -177,3 +178,7 @@ SIMPLE_JWT = {
 
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
+# REST_FRAMEWORK = {
+    
+#     'DEFAULT_FILTER_BACKENDS': ['django_filters.rest_framework.DjangoFilterBackend'],
+# }

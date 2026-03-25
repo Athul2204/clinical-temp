@@ -1,14 +1,16 @@
 # cmsbackend/pharmacist/urls.py
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import MedicineViewSet, MedicineBatchViewSet, DispenseViewSet, MedicineBillViewSet
+from .views import MedicineViewSet, DispenseItemViewSet,MedicineStockLogViewSet,MedicineBatchViewSet, DispenseViewSet, MedicineBillViewSet
 
 router = DefaultRouter()
 router.register(r'medicines', MedicineViewSet, basename='medicine')
 router.register(r'batches', MedicineBatchViewSet, basename='batch')
 router.register(r'dispenses', DispenseViewSet, basename='dispense')
-# router.register(r'dispense-items', DispenseItemViewSet, basename='dispenseitem')
+#router.register(r'dispense-items', DispenseItemViewSet, basename='dispenseitem')
 router.register(r'bills', MedicineBillViewSet, basename='medicinebill')
+router.register(r'dispense-items', DispenseItemViewSet, basename='dispense-items')
+router.register(r'stock-logs', MedicineStockLogViewSet, basename='stock-logs')
 
 urlpatterns = [
     path('', include(router.urls)),
