@@ -1,115 +1,4 @@
-# from rest_framework import serializers
-# from .models import (
-#     Medicine, MedicineBatch, Dispense,
-#     DispenseItem, MedicineBill, MedicineStockLog
-# )
 
-
-# class MedicineSerializer(serializers.ModelSerializer):
-#     class Meta:
-#         model = Medicine
-#         fields = "__all__"
-
-
-# class MedicineBatchSerializer(serializers.ModelSerializer):
-#     medicine = MedicineSerializer(read_only=True)
-
-#     class Meta:
-#         model = MedicineBatch
-#         fields = "__all__"
-
-
-# class DispenseItemSerializer(serializers.ModelSerializer):
-#     class Meta:
-#         model = DispenseItem
-#         fields = "__all__"
-
-
-# class DispenseSerializer(serializers.ModelSerializer):
-#     items = DispenseItemSerializer(many=True)
-
-#     class Meta:
-#         model = Dispense
-#         fields = "__all__"
-
-#     def create(self, validated_data):
-#         items_data = validated_data.pop("items")
-#         dispense = Dispense.objects.create(**validated_data)
-#         for item in items_data:
-#             DispenseItem.objects.create(
-#                 dispense=dispense,
-#                 **item
-#             )
-#         return dispense
-
-
-# class MedicineBillSerializer(serializers.ModelSerializer):
-#     dispense = DispenseSerializer(read_only=True)
-
-#     class Meta:
-#         model = MedicineBill
-#         fields = "__all__"
-
-
-# class MedicineStockLogSerializer(serializers.ModelSerializer):
-#     class Meta:
-#         model = MedicineStockLog
-#         fields = "__all__"
-
-
-
-# from rest_framework import serializers
-# from .models import Medicine, MedicineBatch, MedicineStockLog, Dispense, DispenseItem, MedicineBill
-
-# # ------------------------------
-# # Medicine Serializer
-# # ------------------------------
-# class MedicineSerializer(serializers.ModelSerializer):
-#     class Meta:
-#         model = Medicine
-#         fields = '__all__'
-
-# # ------------------------------
-# # Medicine Batch Serializer
-# # ------------------------------
-# class MedicineBatchSerializer(serializers.ModelSerializer):
-#     class Meta:
-#         model = MedicineBatch
-#         fields = '__all__'
-
-# # ------------------------------
-# # Medicine Stock Log Serializer
-# # ------------------------------
-# class MedicineStockLogSerializer(serializers.ModelSerializer):
-#     class Meta:
-#         model = MedicineStockLog
-#         fields = '__all__'
-
-# # ------------------------------
-# # Dispense Item Serializer
-# # ------------------------------
-# class DispenseItemSerializer(serializers.ModelSerializer):
-#     class Meta:
-#         model = DispenseItem
-#         fields = '__all__'
-
-# # ------------------------------
-# # Dispense Serializer
-# # ------------------------------
-# class DispenseSerializer(serializers.ModelSerializer):
-#     items = DispenseItemSerializer(many=True, read_only=True)
-
-#     class Meta:
-#         model = Dispense
-#         fields = '__all__'
-
-# # ------------------------------
-# # Medicine Bill Serializer
-# # ------------------------------
-# class MedicineBillSerializer(serializers.ModelSerializer):
-#     class Meta:
-#         model = MedicineBill
-#         fields = '__all__'
 from rest_framework import serializers
 from django.utils import timezone
 from datetime import timedelta
@@ -324,13 +213,13 @@ class DispenseItemSerializer(serializers.ModelSerializer):
                 })
 
             # Check stock availability
-            if quantity and quantity > batch.quantity:
-                raise serializers.ValidationError({
-                    'quantity': (
-                        f'Requested quantity {quantity} exceeds '
-                        f'available stock of {batch.quantity}.'
-                    )
-                })
+            # if quantity and quantity > batch.quantity:
+            #     raise serializers.ValidationError({
+            #         'quantity': (
+            #             f'Requested quantity {quantity} exceeds '
+            #             f'available stock of {batch.quantity}.'
+            #         )
+            #     })
 
             # Price must match medicine price
             
@@ -382,37 +271,72 @@ class DispenseSerializer(serializers.ModelSerializer):
 
             total_amount = 0
 
-            for item in items_data:
+            # for item in items_data:
 
+            #     batch = item['batch']
+            #     quantity = item['quantity']
+            #     if quantity > batch.quantity:
+            #         raise serializers.ValidationError(
+            #             f"Not enough stock in batch {batch.batch_number}. Only {batch.quantity} available."
+            #         )
+
+            #     price = batch.medicine.price
+            #     item_total = price * quantity
+
+            #     DispenseItem.objects.create(
+            #         dispense=dispense,
+            #         batch=batch,
+            #         quantity=quantity,
+            #         price=price
+            #     )
+
+            
+
+            #     total_amount += item_total
+            for item in items_data:
                 batch = item['batch']
-                quantity = item['quantity']
-                if quantity > batch.quantity:
-                    raise serializers.ValidationError(
-                        f"Not enough stock in batch {batch.batch_number}. Only {batch.quantity} available."
+                requested_qty = item['quantity']
+                medicine_name = batch.medicine.name
+
+                # 🔴 CASE 1: NO STOCK
+                if batch.quantity == 0:
+                    DispenseItem.objects.create(
+                        dispense=dispense,
+                        batch=batch,
+                        quantity=0,
+                        price=batch.medicine.price,
+                        remarks=f"{medicine_name} is not available. Please purchase from outside."
+                    )
+                    continue
+
+                # 🟡 CASE 2: PARTIAL STOCK
+                if requested_qty > batch.quantity:
+                    dispensed_qty = batch.quantity
+
+                    DispenseItem.objects.create(
+                        dispense=dispense,
+                        batch=batch,
+                        quantity=dispensed_qty,
+                        price=batch.medicine.price,
+                        remarks=(
+                            f"{medicine_name}: Only {dispensed_qty} available. "
+                            f"Remaining to be purchased outside."
+                        )
                     )
 
-                price = batch.medicine.price
-                item_total = price * quantity
+                    total_amount += batch.medicine.price * dispensed_qty
+                    continue
 
+                # 🟢 CASE 3: FULL STOCK
                 DispenseItem.objects.create(
                     dispense=dispense,
                     batch=batch,
-                    quantity=quantity,
-                    price=price
+                    quantity=requested_qty,
+                    price=batch.medicine.price,
+                    remarks=None
                 )
 
-            # reduce stock
-                batch.quantity -= quantity
-                batch.save()
-
-                # create stock log
-                # MedicineStockLog.objects.create(
-                #     batch=batch,
-                #     change_type='DISPENSE',
-                #     quantity_changed=-quantity
-                # )
-
-                total_amount += item_total
+                total_amount += batch.medicine.price * requested_qty
 
             dispense.total_amount = total_amount
             dispense.status = "Completed"
@@ -426,11 +350,16 @@ class DispenseSerializer(serializers.ModelSerializer):
 # ------------------------------
 class MedicineBillSerializer(serializers.ModelSerializer):
     final_amount = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
-
+    items=DispenseItemSerializer(source='dispense.items',many=True,read_only=True)
+    patient = serializers.SerializerMethodField()
     class Meta:
         model = MedicineBill
         fields = '__all__'
         read_only_fields = ['final_amount', 'created_at']
+    def get_patient(self, obj):
+
+        patient = obj.dispense.prescription.consultation.appointment.patient
+        return PatientMiniSerializer(patient).data
 
     def validate_total_amount(self, value):
         if value <= 0:

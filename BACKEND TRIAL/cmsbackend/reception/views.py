@@ -1,62 +1,179 @@
-from rest_framework import viewsets
-from rest_framework.permissions import IsAuthenticated
-from .models import Patient, DoctorAvailability, Appointment, ConsultationBill
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+
+from django.utils import timezone
+
+from .models import Patient, Appointment, ConsultationBill
+from administration.models import DoctorProfile
+
 from .serializers import (
     PatientSerializer,
-    DoctorAvailabilitySerializer,
     AppointmentSerializer,
-    ConsultationBillSerializer,
+    ConsultationBillSerializer
 )
 
 
-# -----------------------------
-# Patient ViewSet
-# -----------------------------
-class PatientViewSet(viewsets.ModelViewSet):
+# ===============================
+# 1️⃣ CREATE PATIENT
+# ===============================
+class CreatePatientView(APIView):
 
-    queryset = Patient.objects.all().order_by("first_name")
-    serializer_class = PatientSerializer
-    permission_classes = [IsAuthenticated]
+    def post(self, request):
+
+        serializer = PatientSerializer(data=request.data)
+
+        if serializer.is_valid():
+            patient = serializer.save()
+
+            return Response(
+                {
+                    "message": "Patient created successfully",
+                    "patient_id": patient.patient_id
+                },
+                status=status.HTTP_201_CREATED
+            )
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-# -----------------------------
-# Doctor Availability ViewSet
-# -----------------------------
-class DoctorAvailabilityViewSet(viewsets.ModelViewSet):
+# ===============================
+# 2️⃣ LIST ALL PATIENTS
+# ===============================
+class PatientListView(APIView):
 
-    queryset = DoctorAvailability.objects.all().order_by("available_date")
-    serializer_class = DoctorAvailabilitySerializer
-    permission_classes = [IsAuthenticated]
+    def get(self, request):
 
+        patients = Patient.objects.all().order_by("-created_at")
 
-# -----------------------------
-# Appointment ViewSet
-# -----------------------------
-class AppointmentViewSet(viewsets.ModelViewSet):
+        serializer = PatientSerializer(patients, many=True)
 
-    queryset = Appointment.objects.all().order_by(
-        "appointment_date",
-        "token_number"
-    )
-
-    serializer_class = AppointmentSerializer
-    permission_classes = [IsAuthenticated]
-
-    def perform_create(self, serializer):
-        Appointment = serializer.save()
-
-        ConsultationBill.objects.create(
-            appointment=Appointment,
-            patient=Appointment,
-            amount=Appointment.doctor.consultation_fee
+        return Response(
+            {
+                "count": patients.count(),
+                "data": serializer.data
+            }
         )
 
 
-# -----------------------------
-# Consultation Bill ViewSet
-# -----------------------------
-class ConsultationBillViewSet(viewsets.ModelViewSet):
+# ===============================
+# 3️⃣ BOOK APPOINTMENT
+# ===============================
+class CreateAppointmentView(APIView):
 
-    queryset = ConsultationBill.objects.all().order_by("-created_at")
-    serializer_class = ConsultationBillSerializer
-    permission_classes = [IsAuthenticated]
+    def post(self, request):
+
+        serializer = AppointmentSerializer(data=request.data)
+
+        if serializer.is_valid():
+            appointment = serializer.save()
+
+            return Response(
+                {
+                    "message": "Appointment booked successfully",
+                    "appointment_id": appointment.appointment_id
+                },
+                status=status.HTTP_201_CREATED
+            )
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+# ===============================
+# 4️⃣ GET APPOINTMENTS BY DATE
+# ===============================
+class AppointmentListByDateView(APIView):
+
+    def get(self, request):
+
+        date_param = request.query_params.get("date")
+
+        if not date_param:
+            return Response(
+                {"error": "Date is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        appointments = Appointment.objects.filter(
+            appointment_date=date_param
+        ).order_by("token_number")
+
+        serializer = AppointmentSerializer(appointments, many=True)
+
+        return Response(
+            {
+                "count": appointments.count(),
+                "data": serializer.data
+            }
+        )
+
+
+# ===============================
+# 5️⃣ CANCEL APPOINTMENT
+# ===============================
+class CancelAppointmentView(APIView):
+
+    def patch(self, request, appointment_id):
+
+        try:
+            appointment = Appointment.objects.get(
+                appointment_id=appointment_id
+            )
+        except Appointment.DoesNotExist:
+            return Response(
+                {"error": "Appointment not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        appointment.status = "Cancelled"
+        appointment.save()
+
+        return Response(
+            {"message": "Appointment cancelled successfully"}
+        )
+
+
+# ===============================
+# 6️⃣ GENERATE BILL
+# ===============================
+class CreateBillView(APIView):
+
+    def post(self, request):
+
+        serializer = ConsultationBillSerializer(data=request.data)
+
+        if serializer.is_valid():
+            bill = serializer.save()
+
+            return Response(
+                {
+                    "message": "Bill generated successfully",
+                    "bill_id": bill.bill_id
+                },
+                status=status.HTTP_201_CREATED
+            )
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+# ===============================
+# 7️⃣ PAY BILL
+# ===============================
+class PayBillView(APIView):
+
+    def patch(self, request, bill_id):
+
+        try:
+            bill = ConsultationBill.objects.get(bill_id=bill_id)
+        except ConsultationBill.DoesNotExist:
+            return Response(
+                {"error": "Bill not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        bill.status = "Paid"
+        bill.save()
+
+        return Response(
+            {"message": "Bill marked as paid"}
+        )

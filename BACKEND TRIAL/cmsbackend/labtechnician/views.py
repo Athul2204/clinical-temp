@@ -40,6 +40,7 @@
 
 
 from rest_framework import viewsets, status
+from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
@@ -68,11 +69,14 @@ from .serializers import (
 # LAB TEST
 # ==============================
 
-class LabTestViewSet(viewsets.ModelViewSet):
+class LabTechnicianBaseViewSet(viewsets.ModelViewSet):
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
+
+class LabTestViewSet(LabTechnicianBaseViewSet):
 
     queryset = LabTest.objects.all()
     serializer_class = LabTestSerializer
-    permission_classes = [IsAuthenticated]
 
     def list(self, request):
         tests = self.get_queryset()
@@ -101,11 +105,10 @@ class LabTestViewSet(viewsets.ModelViewSet):
 # LAB ORDER
 # ==============================
 
-class LabOrderViewSet(viewsets.ModelViewSet):
+class LabOrderViewSet(LabTechnicianBaseViewSet):
 
     queryset = LabOrder.objects.all()
     serializer_class = LabOrderSerializer
-    permission_classes = [IsAuthenticated]
 
     def list(self, request):
         orders = self.get_queryset()
@@ -122,11 +125,10 @@ class LabOrderViewSet(viewsets.ModelViewSet):
 # LAB ORDER ITEM
 # ==============================
 
-class LabOrderItemViewSet(viewsets.ModelViewSet):
+class LabOrderItemViewSet(LabTechnicianBaseViewSet):
 
     queryset = LabOrderItem.objects.all()
     serializer_class = LabOrderItemSerializer
-    permission_classes = [IsAuthenticated]
 
     def list(self, request):
         items = self.get_queryset()
@@ -143,11 +145,10 @@ class LabOrderItemViewSet(viewsets.ModelViewSet):
 # LAB RESULT
 # ==============================
 
-class LabResultViewSet(viewsets.ModelViewSet):
+class LabResultViewSet(LabTechnicianBaseViewSet):
 
     queryset = LabResult.objects.all()
     serializer_class = LabResultSerializer
-    permission_classes = [IsAuthenticated]
 
     def list(self, request):
         results = self.get_queryset()
@@ -164,11 +165,10 @@ class LabResultViewSet(viewsets.ModelViewSet):
 # LAB BILL
 # ==============================
 
-class LabBillViewSet(viewsets.ModelViewSet):
+class LabBillViewSet(LabTechnicianBaseViewSet):
 
     queryset = LabBill.objects.all()
     serializer_class = LabBillSerializer
-    permission_classes = [IsAuthenticated]
 
     def list(self, request):
         bills = self.get_queryset()
@@ -185,11 +185,10 @@ class LabBillViewSet(viewsets.ModelViewSet):
 # LAB EQUIPMENT
 # ==============================
 
-class LabEquipmentViewSet(viewsets.ModelViewSet):
+class LabEquipmentViewSet(LabTechnicianBaseViewSet):
 
     queryset = LabEquipment.objects.all()
     serializer_class = LabEquipmentSerializer
-    permission_classes = [IsAuthenticated]
 
     def list(self, request):
         equipment = self.get_queryset()
@@ -206,11 +205,10 @@ class LabEquipmentViewSet(viewsets.ModelViewSet):
 # LAB MAINTENANCE
 # ==============================
 
-class LabMaintenanceViewSet(viewsets.ModelViewSet):
+class LabMaintenanceViewSet(LabTechnicianBaseViewSet):
 
     queryset = LabMaintenance.objects.all()
     serializer_class = LabMaintenanceSerializer
-    permission_classes = [IsAuthenticated]
 
     def list(self, request):
         records = self.get_queryset()

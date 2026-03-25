@@ -1,19 +1,26 @@
-from rest_framework import routers
-from django.urls import path, include
+from django.urls import path
 from .views import (
-    PatientViewSet,
-    DoctorAvailabilityViewSet,
-    AppointmentViewSet,
-    ConsultationBillViewSet
+    CreatePatientView,
+    PatientListView,
+    CreateAppointmentView,
+    AppointmentListByDateView,
+    CancelAppointmentView,
+    CreateBillView,
+    PayBillView
 )
 
-router = routers.DefaultRouter()
-
-router.register(r'patients', PatientViewSet)
-router.register(r'doctor-availability', DoctorAvailabilityViewSet)
-router.register(r'appointments', AppointmentViewSet)
-router.register(r'consultation-bills', ConsultationBillViewSet)
-
 urlpatterns = [
-    path('', include(router.urls)),
+
+    # Patients
+    path('patients/create/', CreatePatientView.as_view()),
+    path('patients/', PatientListView.as_view()),
+
+    # Appointments
+    path('appointments/create/', CreateAppointmentView.as_view()),
+    path('appointments-by-date/', AppointmentListByDateView.as_view()),
+    path('appointments/<int:appointment_id>/cancel/', CancelAppointmentView.as_view()),
+
+    # Bills
+    path('bills/create/', CreateBillView.as_view()),
+    path('bills/<int:bill_id>/pay/', PayBillView.as_view()),
 ]
