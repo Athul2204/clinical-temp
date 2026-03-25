@@ -9,6 +9,13 @@ from django.contrib.auth.models import User
 
 
 # ----------------------------------------
+# 🔥 COMMON HELPER (IMPORTANT)
+# ----------------------------------------
+def get_future_time():
+    return (timezone.now() + timedelta(hours=1)).time()
+
+
+# ----------------------------------------
 # Patient Model Tests
 # ----------------------------------------
 class TestPatientModel(TestCase):
@@ -59,7 +66,7 @@ class TestDoctorAvailabilityModel(TestCase):
             start_time=time(10, 0),
             end_time=time(12, 0)
         )
-        availability.full_clean()  # should pass
+        availability.full_clean()
 
     def test_invalid_time(self):
         availability = DoctorAvailability(
@@ -98,18 +105,18 @@ class TestAppointmentModel(TestCase):
             patient=self.patient,
             doctor=self.doctor,
             appointment_date=timezone.now().date(),
-            appointment_time=time(10, 0),
+            appointment_time=get_future_time(),  # ✅ FIX
             token_number=1,
             reason="Fever"
         )
-        appointment.full_clean()  # should pass
+        appointment.full_clean()
 
     def test_past_date(self):
         appointment = Appointment(
             patient=self.patient,
             doctor=self.doctor,
             appointment_date=timezone.now().date() - timedelta(days=1),
-            appointment_time=time(10, 0),
+            appointment_time=get_future_time(),
             token_number=1,
             reason="Fever"
         )
@@ -155,7 +162,7 @@ class TestConsultationBillModel(TestCase):
             patient=self.patient,
             doctor=self.doctor,
             appointment_date=timezone.now().date(),
-            appointment_time=time(10, 0),
+            appointment_time=get_future_time(),  # ✅ FIX
             token_number=1,
             reason="Fever"
         )
