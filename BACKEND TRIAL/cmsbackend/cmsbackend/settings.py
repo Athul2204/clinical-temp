@@ -99,7 +99,7 @@ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
 
-        'NAME': 'cms_db_trial',
+        'NAME': 'backend_trial',
         'USER': 'root',
         'PASSWORD' :'faith',
         'HOST': 'localhost',
