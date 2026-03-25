@@ -39,11 +39,8 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'rest_framework',
     'rest_framework_simplejwt',
-<<<<<<< HEAD
-    'rest_framework',
-=======
+
     'django_filters',
->>>>>>> 3fcdd844b21e8ffd01048db863d76d7c2c934692
 
     # Your apps
     'administration',
@@ -104,7 +101,7 @@ DATABASES = {
 
         'NAME': 'cms_db_trial',
         'USER': 'root',
-        'PASSWORD' :'1234',
+        'PASSWORD' :'faith',
         'HOST': 'localhost',
         'PORT':3306,
     }
