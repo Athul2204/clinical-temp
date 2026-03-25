@@ -99,12 +99,10 @@ DATABASES = {
         'ENGINE': 'django.db.backends.mysql',
 
         'NAME': 'cms_db_trial',
-        
         'USER': 'root',
-        'PASSWORD' :'faith',
-
+        'PASSWORD' :'1234',
         'HOST': 'localhost',
-        'PORT':3306
+        'PORT':3306,
     }
 }
 
@@ -180,8 +178,5 @@ SIMPLE_JWT = {
     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
 
     'AUTH_HEADER_TYPES': ('Bearer',),
+
 }
-# REST_FRAMEWORK = {
-    
-#     'DEFAULT_FILTER_BACKENDS': ['django_filters.rest_framework.DjangoFilterBackend'],
-# }
