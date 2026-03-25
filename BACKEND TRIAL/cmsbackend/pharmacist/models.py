@@ -392,6 +392,7 @@ class DispenseItem(models.Model):
     batch = models.ForeignKey(MedicineBatch, on_delete=models.CASCADE)
     quantity = models.PositiveIntegerField()
     price = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0)])
+    remarks=models.TextField(blank=True,null=True)
     def clean(self):
         #  ADDED: quantity must be at least 1
         if self.quantity is not None and self.quantity < 1:
@@ -402,10 +403,10 @@ class DispenseItem(models.Model):
             raise ValidationError({'batch': f'Batch {self.batch.batch_number} has expired and cannot be dispensed.'})
 
         #  ADDED: quantity requested must not exceed available stock
-        if self.batch_id and self.quantity and self.quantity > self.batch.quantity:
-            raise ValidationError({
-                'quantity': f'Requested {self.quantity} exceeds available stock of {self.batch.quantity}.'
-            })
+        # if self.batch_id and self.quantity and self.quantity > self.batch.quantity:
+        #     raise ValidationError({
+        #         'quantity': f'Requested {self.quantity} exceeds available stock of {self.batch.quantity}.'
+        #     })
 
         #  ADDED: price must match the medicine's listed price
         if self.batch_id and self.price and self.price != self.batch.medicine.price:

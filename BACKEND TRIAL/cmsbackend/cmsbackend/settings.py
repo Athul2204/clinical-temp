@@ -99,7 +99,9 @@ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
 
+
         'NAME': 'backend_trial',
+
         'USER': 'root',
         'PASSWORD' :'faith',
         'HOST': 'localhost',
@@ -167,7 +169,8 @@ REST_FRAMEWORK = {
 
         "rest_framework.permissions.IsAuthenticated",
 
-    )
+    ),
+    'DEFAULT_FILTER_BACKENDS': ['django_filters.rest_framework.DjangoFilterBackend'],
 }
 
 from datetime import timedelta
