@@ -195,7 +195,7 @@ class LabOrderSerializer(serializers.ModelSerializer):
 
         if lab_request and patient:
             expected_patient = lab_request.consultation.appointment.patient
-            if patient.id != expected_patient.id:
+            if patient.pk != expected_patient.pk:
                 raise serializers.ValidationError(
                     {"patient": "Patient must match the patient from the linked lab request."}
                 )
