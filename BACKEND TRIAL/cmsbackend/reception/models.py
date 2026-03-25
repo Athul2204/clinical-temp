@@ -178,7 +178,7 @@
 #         super().save(*args, **kwargs)
 
 #     def __str__(self):
-#         return self.bill_code...
+#         return self.bill_code....
 
 from django.db import models
 from django.utils import timezone
