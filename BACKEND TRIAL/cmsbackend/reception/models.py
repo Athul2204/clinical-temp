@@ -4,6 +4,18 @@ from django.utils import timezone
 from django.core.validators import MinValueValidator
 from django.core.exceptions import ValidationError
 from administration.models import DoctorProfile
+<<<<<<< HEAD
+=======
+from datetime import date
+
+
+# ------------------------------
+# DOB VALIDATION (IMPORTANT FIX)
+# ------------------------------
+def validate_dob(value):
+    if value > date.today():
+        raise ValidationError("Date of birth cannot be in the future")
+>>>>>>> 3fcdd844b21e8ffd01048db863d76d7c2c934692
 
 
 # ------------------------------
@@ -19,7 +31,11 @@ class Patient(models.Model):
     email = models.EmailField(unique=True)
     phone = models.CharField(max_length=15)
 
+<<<<<<< HEAD
     date_of_birth = models.DateField()
+=======
+    date_of_birth = models.DateField(validators=[validate_dob])
+>>>>>>> 3fcdd844b21e8ffd01048db863d76d7c2c934692
     age = models.PositiveIntegerField(blank=True, null=True, editable=False)
 
     gender_choices = [
@@ -105,7 +121,6 @@ class DoctorAvailability(models.Model):
         )
 
     def clean(self):
-
         if self.start_time >= self.end_time:
             raise ValidationError(
                 "Start time must be earlier than end time"
@@ -168,7 +183,10 @@ class Appointment(models.Model):
         )
 
     def clean(self):
+<<<<<<< HEAD
 
+=======
+>>>>>>> 3fcdd844b21e8ffd01048db863d76d7c2c934692
         if self.appointment_date < timezone.now().date():
             raise ValidationError("Appointment date cannot be in the past")
 

@@ -37,8 +37,13 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'rest_framework_simplejwt',
     'rest_framework',
+    'rest_framework_simplejwt',
+<<<<<<< HEAD
+    'rest_framework',
+=======
+    'django_filters',
+>>>>>>> 3fcdd844b21e8ffd01048db863d76d7c2c934692
 
     # Your apps
     'administration',
@@ -98,11 +103,10 @@ DATABASES = {
         'ENGINE': 'django.db.backends.mysql',
 
         'NAME': 'cms_db_trial',
-
         'USER': 'root',
         'PASSWORD' :'1234',
         'HOST': 'localhost',
-        'PORT':3306
+        'PORT':3306,
     }
 }
 
@@ -177,4 +181,5 @@ SIMPLE_JWT = {
     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
 
     'AUTH_HEADER_TYPES': ('Bearer',),
+
 }
