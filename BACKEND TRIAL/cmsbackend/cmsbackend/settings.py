@@ -101,7 +101,7 @@ DATABASES = {
         'USER': 'root',
         'PASSWORD' :'1234',
         'HOST': 'localhost',
-        'PORT':3306
+        'PORT':3306,
     }
 }
 
@@ -176,4 +176,5 @@ SIMPLE_JWT = {
     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
 
     'AUTH_HEADER_TYPES': ('Bearer',),
+
 }
