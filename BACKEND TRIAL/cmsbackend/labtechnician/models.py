@@ -373,7 +373,7 @@ class LabOrder(models.Model):
 
     def clean(self):
         expected_patient = self.lab_request.consultation.appointment.patient
-        if self.patient_id != expected_patient.id:
+        if self.patient_id != expected_patient.pk:
             raise ValidationError(
                 {"patient": "Patient must match the patient in the linked lab request."}
             )
