@@ -8,6 +8,7 @@ from administration.models import StaffProfile, DoctorProfile
 from reception.models import Patient, Appointment
 from doctor.models import Consultation
 from labtechnician.models import LabTest
+from pharmacist.models import Medicine
 
 
 # ----------------------------------------
@@ -471,6 +472,7 @@ class TestViewLabResultsAPI(TestCase):
 # ----------------------------------------
 # Create Prescription Tests
 # ----------------------------------------
+
 class TestCreatePrescriptionAPI(TestCase):
 
     def setUp(self):
@@ -529,6 +531,12 @@ class TestCreatePrescriptionAPI(TestCase):
             advice="Rest"
         )
 
+        # ✅ ADDED: Create Medicine
+        self.medicine = Medicine.objects.create(
+            name="Paracetamol",
+            price=10
+        )
+
         self.client.force_authenticate(user=self.user)
 
     def test_create_prescription(self):
@@ -538,7 +546,7 @@ class TestCreatePrescriptionAPI(TestCase):
             "doctor": self.doctor.doctor_id,
             "items": [
                 {
-                    "medicine_name": "Paracetamol",
+                    "medicine_name": self.medicine.medicine_id,  # ✅ FIXED
                     "dosage": "500mg",
                     "frequency": "2 times",
                     "duration": 5
@@ -561,7 +569,7 @@ class TestCreatePrescriptionAPI(TestCase):
             "doctor": self.doctor.doctor_id,
             "items": [
                 {
-                    "medicine_name": "Paracetamol",
+                    "medicine_name": self.medicine.medicine_id,  # ✅ FIXED
                     "dosage": "500mg",
                     "frequency": "2 times",
                     "duration": 5
@@ -590,7 +598,7 @@ class TestCreatePrescriptionAPI(TestCase):
             "doctor": self.doctor.doctor_id,
             "items": [
                 {
-                    "medicine_name": "Paracetamol",
+                    "medicine_name": self.medicine.medicine_id,  # ✅ FIXED
                     "dosage": "500mg",
                     "frequency": "2 times",
                     "duration": 5

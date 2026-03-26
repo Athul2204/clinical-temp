@@ -90,6 +90,35 @@ class PreviousConsultationSerializer(serializers.ModelSerializer):
             "created_at"
         ]
 
+# ---------------------------------
+# Prescription Item Serializer
+# ---------------------------------
+class PrescriptionItemSerializer(serializers.ModelSerializer):
+    medicine_display = serializers.CharField(
+    source="medicine_name.name",
+    read_only=True
+)
+  
+    class Meta:
+        model = PrescriptionItem
+        fields = [
+            "medicine_name",
+            "medicine_display",
+            "dosage",
+            "frequency",
+            "duration",
+            "instructions"
+        ]
+
+    # Field validations
+    def validate_duration(self, value):
+
+        if value <= 0:
+            raise serializers.ValidationError(
+                "Duration must be greater than zero"
+            )
+
+        return value
 
 # -------------------------
 # Previous Prescription
@@ -350,35 +379,7 @@ class LabResultViewSerializer(serializers.ModelSerializer):
 
 
 
-# ---------------------------------
-# Prescription Item Serializer
-# ---------------------------------
-class PrescriptionItemSerializer(serializers.ModelSerializer):
-    medicine_display = serializers.CharField(
-    source="medicine_name.name",
-    read_only=True
-)
-  
-    class Meta:
-        model = PrescriptionItem
-        fields = [
-            "medicine_name",
-            "medicine_display",
-            "dosage",
-            "frequency",
-            "duration",
-            "instructions"
-        ]
 
-    # Field validations
-    def validate_duration(self, value):
-
-        if value <= 0:
-            raise serializers.ValidationError(
-                "Duration must be greater than zero"
-            )
-
-        return value
 
 
 # ---------------------------------
