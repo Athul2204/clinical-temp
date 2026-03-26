@@ -1,8 +1,10 @@
+
 from django.db import models
 from django.utils import timezone
 from django.core.validators import MinValueValidator
 from django.core.exceptions import ValidationError
 from administration.models import DoctorProfile
+
 from datetime import date
 
 
@@ -27,7 +29,10 @@ class Patient(models.Model):
     email = models.EmailField(unique=True)
     phone = models.CharField(max_length=15)
 
+
+    
     date_of_birth = models.DateField(validators=[validate_dob])
+
     age = models.PositiveIntegerField(blank=True, null=True, editable=False)
 
     gender_choices = [
@@ -50,7 +55,7 @@ class Patient(models.Model):
     ]
 
     blood_group = models.CharField(
-        max_length=5,
+        max_length=3,
         choices=blood_group_choices,
         blank=True,
         null=True
@@ -142,6 +147,7 @@ class Appointment(models.Model):
     )
 
     appointment_date = models.DateField()
+
     appointment_time = models.TimeField()
 
     token_number = models.PositiveIntegerField(
@@ -174,6 +180,7 @@ class Appointment(models.Model):
         )
 
     def clean(self):
+
         if self.appointment_date < timezone.now().date():
             raise ValidationError("Appointment date cannot be in the past")
 
