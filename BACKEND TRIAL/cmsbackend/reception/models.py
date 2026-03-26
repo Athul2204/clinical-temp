@@ -118,11 +118,10 @@ class DoctorAvailability(models.Model):
         )
 
     def clean(self):
-        if self.start_time >= self.end_time:
-            raise ValidationError(
-                "Start time must be earlier than end time"
-            )
-
+        if self.start_time and self.end_time:   # ✅ check first
+         if self.start_time >= self.end_time:
+            raise ValidationError("End time must be after start time")
+        
     def __str__(self):
         return f"{self.doctor} on {self.available_date}"
 
