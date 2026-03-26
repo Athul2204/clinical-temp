@@ -6,3 +6,4 @@ __pycache__/
 *.pyd
 
 cmsbackend/cmsbackend/settings.py
+.env

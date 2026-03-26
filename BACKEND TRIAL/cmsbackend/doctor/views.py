@@ -111,15 +111,15 @@ class ConsultationPageView(APIView):
             appointment__patient=patient
         ).exclude(
             appointment=appointment
-        ).order_by("-created_at")
+        ).order_by("-created_at")[:3]
 
         prescriptions = Prescription.objects.filter(
             consultation__appointment__patient=patient
-        )
+        ).order_by("-created_at")[:3]
 
         lab_results = LabResult.objects.filter(
             lab_order_item__lab_order__patient=patient
-        )
+        ).order_by("-created_at")[:3]
 
         data = {
             "appointment": AppointmentSerializer(appointment).data,
