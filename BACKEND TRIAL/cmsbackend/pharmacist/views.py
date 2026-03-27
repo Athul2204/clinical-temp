@@ -1,13 +1,13 @@
 
 from rest_framework import viewsets
-
+from rest_framework.views import APIView
 from rest_framework.viewsets import ModelViewSet,ReadOnlyModelViewSet
 from rest_framework.response import Response
 from rest_framework import status
 from .serializers import MedicineSerializer, MedicineBatchSerializer, DispenseSerializer, DispenseItemSerializer, MedicineBillSerializer,MedicineStockLogSerializer
-
+from doctor.models import Prescription
 from .models import Medicine, MedicineBatch, Dispense, DispenseItem, MedicineBill,MedicineStockLog
-
+from .serializers import IncomingPrescriptionSerializer
 from rest_framework.permissions import IsAuthenticated
 from authentication.permissions import IsPharmacist
 from rest_framework.filters import SearchFilter
@@ -96,7 +96,8 @@ class DispenseViewSet(ModelViewSet):
     queryset = Dispense.objects.all()
     serializer_class = DispenseSerializer
     permission_classes = [IsAuthenticated,IsPharmacist]
-
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ['prescription', 'status']
     def create(self, request, *args, **kwargs):
 
         serializer = self.get_serializer(data=request.data)
@@ -141,4 +142,53 @@ class MedicineBillViewSet(ModelViewSet):
                 "data": serializer.data
             },
             status=status.HTTP_201_CREATED
+        )
+
+
+class SentPrescriptionListView(APIView):
+    permission_classes = [IsAuthenticated, IsPharmacist]
+
+    def get(self, request):
+        prescriptions = Prescription.objects.filter(
+            status="Sent"
+        ).select_related(
+            'consultation__appointment__patient',
+            'doctor'
+        ).prefetch_related('items__medicine_name')
+
+        serializer = IncomingPrescriptionSerializer(prescriptions, many=True)
+        return Response(
+            {
+                "message": "Sent prescriptions fetched successfully",
+                "count": prescriptions.count(),
+                "data": serializer.data
+            },
+            status=status.HTTP_200_OK
+        )
+
+class SentPrescriptionDetailView(APIView):
+    permission_classes = [IsAuthenticated, IsPharmacist]
+
+    def get(self, request, prescription_code):
+        try:
+            prescription = Prescription.objects.select_related(
+                'consultation__appointment__patient',
+                'doctor'
+            ).prefetch_related('items__medicine_name').get(
+                prescription_code=prescription_code,
+                status="Sent"
+            )
+        except Prescription.DoesNotExist:
+            return Response(
+                {"message": "Prescription not found or not yet sent"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        serializer = IncomingPrescriptionSerializer(prescription)
+        return Response(
+            {
+                "message": "Prescription details fetched successfully",
+                "data": serializer.data
+            },
+            status=status.HTTP_200_OK
         )
