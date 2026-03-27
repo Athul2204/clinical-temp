@@ -22,12 +22,14 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
 
     def validate(self, attrs):
         data = super().validate(attrs)
+        role = self.user.staff_profile.role.lower().replace(" ", "")
 
         data['user'] = {
             "id": self.user.id,
             "username": self.user.username,
             "email": self.user.email,
-            "is_staff": self.user.is_staff
+            "is_staff": self.user.is_staff,
+            "role": role
         }
 
         return data

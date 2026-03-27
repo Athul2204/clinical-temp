@@ -13,6 +13,7 @@ class StaffProfile(models.Model):
         ("Receptionist", "Receptionist"),
         ("Lab Technician", "Lab Technician"),
         ("Pharmacist", "Pharmacist"),
+        ("Admin", "Admin")
     ]
 
     id = models.AutoField(primary_key=True)
