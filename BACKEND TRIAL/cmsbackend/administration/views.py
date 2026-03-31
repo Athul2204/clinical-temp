@@ -1,229 +1,178 @@
-from django.shortcuts import render
-from django.utils import timezone
-
+from django.shortcuts import get_object_or_404
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from rest_framework.permissions import IsAdminUser  # ✅ NEW
+from rest_framework.permissions import IsAdminUser
+from rest_framework.pagination import PageNumberPagination
 
 from .models import (
-    StaffProfile,
-    DoctorProfile,
-    ReceptionistProfile,
-    LabTechnicianProfile,
-    PharmacistProfile,
-    AuditLog
+    StaffProfile, DoctorProfile, ReceptionistProfile,
+    LabTechnicianProfile, PharmacistProfile, AuditLog
 )
-
 from .serializers import (
-    StaffProfileSerializer,
-    DoctorProfileSerializer,
-    ReceptionistProfileSerializer,
-    LabTechnicianProfileSerializer,
-    PharmacistProfileSerializer,
-    AuditLogSerializer
+    StaffProfileSerializer, DoctorProfileSerializer,
+    ReceptionistProfileSerializer, LabTechnicianProfileSerializer,
+    PharmacistProfileSerializer, AuditLogSerializer
 )
 
-# =====================================
-# 🔐 BASE ADMIN VIEW (JWT + ADMIN ONLY)
-# =====================================
+# ─── BASE CONFIGURATION ──────────────────────────────────────────
 
 class AdminBaseView(APIView):
     permission_classes = [IsAdminUser]
 
+class StandardPagination(PageNumberPagination):
+    page_size = 10
+    page_size_query_param = 'page_size'
+    max_page_size = 100
 
-# =====================================
-# 1️⃣ STAFF LIST
-# =====================================
+# ─── REUSABLE LOGIC CLASSES ──────────────────────────────────────
 
-class StaffListView(AdminBaseView):
+class ListCreateModelView(AdminBaseView):
+    """
+    Handles Collection actions: 
+    GET -> List all items (with pagination)
+    POST -> Create a new item
+    """
+    model = None
+    serializer_class = None
+    order_field = 'id'
 
-    def get(self, request):
-        staff = StaffProfile.objects.all()
-        serializer = StaffProfileSerializer(staff, many=True)
-
-        return Response({
-            "message": "Staff list fetched successfully",
-            "count": staff.count(),
-            "data": serializer.data
-        }, status=status.HTTP_200_OK)
-
-
-# =====================================
-# 2️⃣ CREATE STAFF
-# =====================================
-
-class CreateStaffView(AdminBaseView):
-
-    def post(self, request):
-        serializer = StaffProfileSerializer(data=request.data)
-
-        if serializer.is_valid():
-            staff = serializer.save()
-            return Response({
-                "message": "Staff created successfully",
-                "staff_id": staff.id
-            }, status=status.HTTP_201_CREATED)
-
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-# =====================================
-# 3️⃣ DOCTOR LIST
-# =====================================
-
-class DoctorListView(AdminBaseView):
+    def get_queryset(self):
+        return self.model.objects.all().order_by(f'-{self.order_field}')
 
     def get(self, request):
-        doctors = DoctorProfile.objects.all()
-        serializer = DoctorProfileSerializer(doctors, many=True)
-
-        return Response({
-            "message": "Doctor list fetched successfully",
-            "count": doctors.count(),
-            "data": serializer.data
-        }, status=status.HTTP_200_OK)
-
-
-# =====================================
-# 4️⃣ CREATE DOCTOR
-# =====================================
-
-class CreateDoctorView(AdminBaseView):
+        queryset = self.get_queryset()
+        paginator = StandardPagination()
+        page = paginator.paginate_queryset(queryset, request)
+        serializer = self.serializer_class(page, many=True)
+        return paginator.get_paginated_response(serializer.data)
 
     def post(self, request):
-        serializer = DoctorProfileSerializer(data=request.data)
-
+        serializer = self.serializer_class(data=request.data)
         if serializer.is_valid():
-            doctor = serializer.save()
+            instance = serializer.save()
             return Response({
-                "message": "Doctor created successfully",
-                "doctor_id": doctor.id
+                "message": f"{self.model.__name__} created successfully",
+                "id": instance.pk,
+                "data": serializer.data
             }, status=status.HTTP_201_CREATED)
-
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
-# =====================================
-# 5️⃣ RECEPTIONIST LIST
-# =====================================
-
-class ReceptionistListView(AdminBaseView):
-
-    def get(self, request):
-        receptionists = ReceptionistProfile.objects.all()
-        serializer = ReceptionistProfileSerializer(receptionists, many=True)
-
         return Response({
-            "message": "Receptionist list fetched successfully",
-            "count": receptionists.count(),
-            "data": serializer.data
-        }, status=status.HTTP_200_OK)
+            "message": "Validation failed",
+            "errors": serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
 
 
-# =====================================
-# 6️⃣ CREATE RECEPTIONIST
-# =====================================
+class RetrieveUpdateDeleteView(AdminBaseView):
+    """
+    Handles Individual Item actions:
+    GET -> Retrieve one
+    PUT -> Full update
+    PATCH -> Partial update
+    DELETE -> Remove item
+    """
+    serializer_class = None
 
-class CreateReceptionistView(AdminBaseView):
+    def _get_object(self, pk):
+        # Dynamically determine the model from the Serializer's Meta class
+        model = self.serializer_class.Meta.model
+        return get_object_or_404(model, pk=pk)
 
-    def post(self, request):
-        serializer = ReceptionistProfileSerializer(data=request.data)
+    def get(self, request, pk):
+        instance = self._get_object(pk)
+        serializer = self.serializer_class(instance)
+        return Response(serializer.data)
 
+    def put(self, request, pk):
+        instance = self._get_object(pk)
+        serializer = self.serializer_class(instance, data=request.data)
         if serializer.is_valid():
-            receptionist = serializer.save()
-            return Response({
-                "message": "Receptionist created successfully",
-                "receptionist_id": receptionist.id
-            }, status=status.HTTP_201_CREATED)
-
+            serializer.save()
+            return Response({"message": "Updated successfully", "data": serializer.data})
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-
-# =====================================
-# 7️⃣ LAB TECHNICIAN LIST
-# =====================================
-
-class LabTechnicianListView(AdminBaseView):
-
-    def get(self, request):
-        technicians = LabTechnicianProfile.objects.all()
-        serializer = LabTechnicianProfileSerializer(technicians, many=True)
-
-        return Response({
-            "message": "Lab technicians fetched successfully",
-            "count": technicians.count(),
-            "data": serializer.data
-        }, status=status.HTTP_200_OK)
-
-
-# =====================================
-# 8️⃣ CREATE LAB TECHNICIAN
-# =====================================
-
-class CreateLabTechnicianView(AdminBaseView):
-
-    def post(self, request):
-        serializer = LabTechnicianProfileSerializer(data=request.data)
-
+    def patch(self, request, pk):
+        instance = self._get_object(pk)
+        serializer = self.serializer_class(instance, data=request.data, partial=True)
         if serializer.is_valid():
-            technician = serializer.save()
-            return Response({
-                "message": "Lab technician created successfully",
-                "technician_id": technician.id
-            }, status=status.HTTP_201_CREATED)
-
+            serializer.save()
+            return Response({"message": "Partial update successful", "data": serializer.data})
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-
-# =====================================
-# 9️⃣ PHARMACIST LIST
-# =====================================
-
-class PharmacistListView(AdminBaseView):
-
-    def get(self, request):
-        pharmacists = PharmacistProfile.objects.all()
-        serializer = PharmacistProfileSerializer(pharmacists, many=True)
-
-        return Response({
-            "message": "Pharmacist list fetched successfully",
-            "count": pharmacists.count(),
-            "data": serializer.data
-        }, status=status.HTTP_200_OK)
+    def delete(self, request, pk):
+        instance = self._get_object(pk)
+        instance.delete()
+        return Response({"message": "Deleted successfully"}, status=status.HTTP_204_NO_CONTENT)
 
 
-# =====================================
-# 🔟 CREATE PHARMACIST
-# =====================================
+# ─── FINAL IMPLEMENTATIONS ───────────────────────────────────────
 
-class CreatePharmacistView(AdminBaseView):
+# STAFF
+class StaffListView(ListCreateModelView):
+    model = StaffProfile
+    serializer_class = StaffProfileSerializer
 
-    def post(self, request):
-        serializer = PharmacistProfileSerializer(data=request.data)
+class StaffDetailView(RetrieveUpdateDeleteView):
+    serializer_class = StaffProfileSerializer
 
-        if serializer.is_valid():
-            pharmacist = serializer.save()
-            return Response({
-                "message": "Pharmacist created successfully",
-                "pharmacist_id": pharmacist.id
-            }, status=status.HTTP_201_CREATED)
+# DOCTOR
+class DoctorListView(ListCreateModelView):
+    model = DoctorProfile
+    serializer_class = DoctorProfileSerializer
+    order_field = 'doctor_id'
 
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+class DoctorDetailView(RetrieveUpdateDeleteView):
+    serializer_class = DoctorProfileSerializer
 
+# RECEPTIONIST
+class ReceptionistListView(ListCreateModelView):
+    model = ReceptionistProfile
+    serializer_class = ReceptionistProfileSerializer
+    order_field = 'profile_id'
 
-# =====================================
-# 1️⃣1️⃣ AUDIT LOG LIST
-# =====================================
+class ReceptionistDetailView(RetrieveUpdateDeleteView):
+    serializer_class = ReceptionistProfileSerializer
 
+# LAB TECHNICIAN
+class LabTechnicianListView(ListCreateModelView):
+    model = LabTechnicianProfile
+    serializer_class = LabTechnicianProfileSerializer
+    order_field = 'profile_id'
+
+class LabTechnicianDetailView(RetrieveUpdateDeleteView):
+    serializer_class = LabTechnicianProfileSerializer
+
+# PHARMACIST
+class PharmacistListView(ListCreateModelView):
+    model = PharmacistProfile
+    serializer_class = PharmacistProfileSerializer
+
+class PharmacistDetailView(RetrieveUpdateDeleteView):
+    serializer_class = PharmacistProfileSerializer
+
+# AUDIT LOG (Read-Only)
 class AuditLogListView(AdminBaseView):
-
     def get(self, request):
         logs = AuditLog.objects.all().order_by("-timestamp")
-        serializer = AuditLogSerializer(logs, many=True)
+        paginator = StandardPagination()
+        page = paginator.paginate_queryset(logs, request)
+        serializer = AuditLogSerializer(page, many=True)
+        return paginator.get_paginated_response(serializer.data)
 
-        return Response({
-            "message": "Audit logs fetched successfully",
-            "count": logs.count(),
-            "data": serializer.data
-        }, status=status.HTTP_200_OK)
+# DASHBOARD
+class AdminDashboardView(AdminBaseView):
+    def get(self, request):
+        data = {
+            "total_staff": StaffProfile.objects.count(),
+            "active_staff": StaffProfile.objects.filter(is_active=True).count(),
+            "total_doctors": DoctorProfile.objects.count(),
+            "total_receptionists": ReceptionistProfile.objects.count(),
+            "total_lab_technicians": LabTechnicianProfile.objects.count(),
+            "total_pharmacists": PharmacistProfile.objects.count(),
+            "recent_audit_logs": list(
+                AuditLog.objects.order_by('-timestamp')[:10].values(
+                    'log_id', 'user__username', 'action', 'module',
+                    'object_id', 'description', 'timestamp'
+                )
+            )
+        }
+        return Response(data)
