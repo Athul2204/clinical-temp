@@ -185,9 +185,9 @@ from rest_framework import status
 from django.utils import timezone
 from django.db import transaction
 
-from .models import Patient, Appointment, ConsultationBill
+from .models import Patient, Appointment, ConsultationBill, DoctorAvailability
 from administration.models import DoctorProfile
-from .serializers import PatientSerializer, AppointmentSerializer, ConsultationBillSerializer
+from .serializers import PatientSerializer, AppointmentSerializer, ConsultationBillSerializer, DoctorAvailabilitySerializer
 
 # ===============================
 # 1️⃣ CREATE PATIENT
@@ -295,3 +295,17 @@ class PayBillView(APIView):
         bill.status = "Paid"
         bill.save()
         return Response({"message": "Bill marked as paid"})
+
+# ===============================
+# 8️⃣ LIST DOCTOR AVAILABILITY
+# ===============================
+class DoctorAvailabilityListView(APIView):
+
+    def get(self, request):
+        date_param = request.query_params.get("date")
+        qs = DoctorAvailability.objects.select_related("doctor__staff").all()
+        if date_param:
+            qs = qs.filter(available_date=date_param)
+        qs = qs.order_by("available_date", "start_time")
+        serializer = DoctorAvailabilitySerializer(qs, many=True)
+        return Response({"count": qs.count(), "data": serializer.data})
