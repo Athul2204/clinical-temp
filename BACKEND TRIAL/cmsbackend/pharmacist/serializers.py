@@ -410,9 +410,9 @@
 #         return str(obj.doctor)
 from rest_framework import serializers
 from django.utils import timezone
+from datetime import timedelta
 from django.db import transaction
 from rest_framework.exceptions import ValidationError
-
 from doctor.models import Prescription, PrescriptionItem
 from reception.models import Patient
 
@@ -422,18 +422,18 @@ from .models import (
 )
 
 
-# ------------------------------
-# Patient Mini Serializer
-# ------------------------------
+# ==============================
+# PATIENT MINI SERIALIZER
+# ==============================
 class PatientMiniSerializer(serializers.ModelSerializer):
     class Meta:
         model = Patient
         fields = ["patient_id", "first_name", "last_name"]
 
 
-# ------------------------------
-# Medicine Serializer
-# ------------------------------
+# ==============================
+# MEDICINE SERIALIZER
+# ==============================
 class MedicineSerializer(serializers.ModelSerializer):
     total_stock = serializers.SerializerMethodField()
     expired_stock = serializers.SerializerMethodField()
@@ -444,28 +444,31 @@ class MedicineSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
     def get_total_stock(self, obj):
+        """Get total non-expired stock"""
         today = timezone.now().date()
-        return sum(b.quantity for b in obj.batches.filter(expiry_date__gte=today))
+        batches = obj.batches.filter(expiry_date__gte=today)
+        return sum(batch.quantity for batch in batches)
 
     def get_expired_stock(self, obj):
+        """Get expired stock"""
         today = timezone.now().date()
-        return sum(b.quantity for b in obj.batches.filter(expiry_date__lt=today))
+        batches = obj.batches.filter(expiry_date__lt=today)
+        return sum(batch.quantity for batch in batches)
 
     def get_expiring_soon_stock(self, obj):
+        """Get stock expiring within 30 days"""
         today = timezone.now().date()
-        next_30 = today + timezone.timedelta(days=30)
-        return sum(
-            b.quantity for b in obj.batches.filter(
-                expiry_date__gte=today,
-                expiry_date__lte=next_30
-            )
+        next_30 = today + timedelta(days=30)
+        batches = obj.batches.filter(
+            expiry_date__gte=today,
+            expiry_date__lte=next_30
         )
+        return sum(batch.quantity for batch in batches)
 
     def validate_name(self, value):
-        value = value.strip()
-        if not value:
+        if not value.strip():
             raise serializers.ValidationError("Medicine name cannot be blank.")
-        return value
+        return value.strip()
 
     def validate_price(self, value):
         if value <= 0:
@@ -473,12 +476,22 @@ class MedicineSerializer(serializers.ModelSerializer):
         return value
 
 
-# ------------------------------
-# Medicine Batch Serializer
-# ------------------------------
+# ==============================
+# MEDICINE BATCH SERIALIZER
+# ==============================
 class MedicineBatchSerializer(serializers.ModelSerializer):
-    medicine = serializers.PrimaryKeyRelatedField(queryset=Medicine.objects.all())
+    medicine = serializers.PrimaryKeyRelatedField(
+        queryset=Medicine.objects.all(),
+        write_only=True
+    )
     medicine_details = MedicineSerializer(source='medicine', read_only=True)
+    medicine_name = serializers.CharField(source='medicine.name', read_only=True)
+    medicine_price = serializers.DecimalField(
+        source='medicine.price',
+        max_digits=10,
+        decimal_places=2,
+        read_only=True
+    )
 
     class Meta:
         model = MedicineBatch
@@ -496,13 +509,22 @@ class MedicineBatchSerializer(serializers.ModelSerializer):
         return value
 
 
-# ------------------------------
-# Stock Log Serializer (FIXED - YOU MISSED THIS)
-# ------------------------------
+# ==============================
+# STOCK LOG SERIALIZER
+# ==============================
 class MedicineStockLogSerializer(serializers.ModelSerializer):
+    batch_details = serializers.SerializerMethodField()
+
     class Meta:
         model = MedicineStockLog
         fields = '__all__'
+        read_only_fields = ['created_at']
+
+    def get_batch_details(self, obj):
+        return {
+            'batch_number': obj.batch.batch_number,
+            'medicine_name': obj.batch.medicine.name
+        }
 
     def validate(self, data):
         change_type = data.get('change_type')
@@ -520,54 +542,84 @@ class MedicineStockLogSerializer(serializers.ModelSerializer):
         return data
 
 
-# ------------------------------
-# Dispense Item Serializer
-# ------------------------------
+# ==============================
+# DISPENSE ITEM SERIALIZER
+# ==============================
 class DispenseItemSerializer(serializers.ModelSerializer):
-    price = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
-
+    batch_number = serializers.CharField(source='batch.batch_number', read_only=True)
+    medicine_name = serializers.CharField(source='batch.medicine.name', read_only=True)
+    
     class Meta:
         model = DispenseItem
-        fields = '__all__'
-        read_only_fields = ['price', 'dispense']
+        fields = ['batch', 'batch_number', 'medicine_name', 'quantity', 'price']
+        read_only_fields = ['price']
 
     def validate(self, data):
         batch = data.get('batch')
         qty = data.get('quantity')
 
+        if not batch:
+            raise ValidationError("Batch is required")
+        
+        if not qty:
+            raise ValidationError("Quantity is required")
+
         if batch.expiry_date < timezone.now().date():
-            raise ValidationError("Batch expired")
+            raise ValidationError(f"Batch {batch.batch_number} expired")
 
         if qty > batch.quantity:
-            raise ValidationError(f"Only {batch.quantity} available")
+            raise ValidationError(f"Only {batch.quantity} units available in batch {batch.batch_number}")
 
         return data
 
 
-# ------------------------------
-# Dispense Serializer (CRITICAL FIX)
-# ------------------------------
+# ==============================
+# DISPENSE SERIALIZER (CRITICAL FIX)
+# ==============================
 class DispenseSerializer(serializers.ModelSerializer):
     items = DispenseItemSerializer(many=True)
-    total_amount = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
-    patient = serializers.SerializerMethodField()
-
+    patient_details = serializers.SerializerMethodField(read_only=True)
+    prescription_code = serializers.CharField(source='prescription.prescription_code', read_only=True)
+    
     class Meta:
         model = Dispense
-        fields = ['dispense_id', 'prescription', 'patient', 'items', 'status', 'dispense_date', 'total_amount']
+        fields = [
+            'dispense_id', 
+            'prescription', 
+            'patient', 
+            'patient_details',
+            'prescription_code',
+            'items', 
+            'status', 
+            'dispense_date', 
+            'total_amount'
+        ]
+        read_only_fields = ['dispense_id', 'patient', 'dispense_date', 'total_amount']
 
-    def get_patient(self, obj):
-        patient = obj.prescription.consultation.appointment.patient
-        return PatientMiniSerializer(patient).data
+    def get_patient_details(self, obj):
+        patient = obj.patient
+        return {
+            'patient_id': patient.patient_id,
+            'first_name': patient.first_name,
+            'last_name': patient.last_name,
+            'full_name': f"{patient.first_name} {patient.last_name}"
+        }
 
     def validate(self, data):
         prescription = data.get('prescription')
 
+        if not prescription:
+            raise ValidationError("Prescription is required")
+
         if prescription.status != "Sent":
-            raise ValidationError("Prescription must be sent")
+            raise ValidationError("Prescription must be in 'Sent' status")
 
         if Dispense.objects.filter(prescription=prescription, status='Completed').exists():
-            raise ValidationError("Already dispensed")
+            raise ValidationError("Prescription already dispensed")
+
+        items_data = data.get('items', [])
+        if not items_data:
+            raise ValidationError("At least one medicine item is required")
 
         return data
 
@@ -576,39 +628,53 @@ class DispenseSerializer(serializers.ModelSerializer):
         items_data = validated_data.pop('items')
         prescription = validated_data['prescription']
 
+        # Get patient from prescription
         patient = prescription.consultation.appointment.patient
         validated_data['patient'] = patient
-        validated_data['total_amount'] = 0
 
-        dispense = Dispense.objects.create(**validated_data)
-
+        # Get allowed medicines from prescription
         prescription_items = PrescriptionItem.objects.filter(prescription=prescription)
-        allowed_medicines = [item.medicine_name for item in prescription_items]
+        allowed_medicine_ids = [item.medicine_name_id for item in prescription_items]
 
+        # Calculate total and validate medicines
         total = 0
+        validated_items = []
 
-        for item in items_data:
-            batch = item['batch']
-            qty = item['quantity']
+        for item_data in items_data:
+            batch = item_data['batch']
+            qty = item_data['quantity']
             medicine = batch.medicine
 
-            if medicine not in allowed_medicines:
-                raise ValidationError(f"{medicine.name} not in prescription")
+            # Check if medicine is in prescription
+            if medicine.medicine_id not in allowed_medicine_ids:
+                raise ValidationError(
+                    f"{medicine.name} is not in the prescription"
+                )
 
-            # ❌ NO STOCK REDUCTION HERE (IMPORTANT FIX)
+            # Calculate item total
+            item_total = qty * medicine.price
+            total += item_total
 
-            disp_item = DispenseItem.objects.create(
+            validated_items.append({
+                'batch': batch,
+                'quantity': qty,
+                'price': medicine.price
+            })
+
+        # Set total amount and create dispense
+        validated_data['total_amount'] = total
+        validated_data['status'] = 'Completed'
+        dispense = Dispense.objects.create(**validated_data)
+
+        # Create dispense items (stock deduction happens in model save)
+        for item_data in validated_items:
+            DispenseItem.objects.create(
                 dispense=dispense,
-                batch=batch,
-                quantity=qty
+                batch=item_data['batch'],
+                quantity=item_data['quantity']
             )
 
-            total += qty * medicine.price
-
-        dispense.total_amount = total
-        dispense.status = "Completed"
-        dispense.save()
-
+        # Update prescription status
         prescription.status = "Dispensed"
         prescription.dispensed_at = timezone.now()
         prescription.save(update_fields=['status', 'dispensed_at'])
@@ -616,39 +682,63 @@ class DispenseSerializer(serializers.ModelSerializer):
         return dispense
 
 
-# ------------------------------
-# Medicine Bill Serializer
-# ------------------------------
+# ==============================
+# MEDICINE BILL SERIALIZER
+# ==============================
 class MedicineBillSerializer(serializers.ModelSerializer):
-    final_amount = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
-    patient = serializers.SerializerMethodField()
+    patient_details = serializers.SerializerMethodField(read_only=True)
     items = DispenseItemSerializer(source='dispense.items', many=True, read_only=True)
+    prescription_code = serializers.CharField(source='dispense.prescription.prescription_code', read_only=True)
 
     class Meta:
         model = MedicineBill
-        fields = '__all__'
-        read_only_fields = ['final_amount', 'created_at']
+        fields = [
+            'bill_id',
+            'dispense',
+            'total_amount',
+            'discount',
+            'final_amount',
+            'payment_status',
+            'created_at',
+            'patient_details',
+            'prescription_code',
+            'items'
+        ]
+        read_only_fields = ['bill_id', 'final_amount', 'created_at']
 
-    def get_patient(self, obj):
-        patient = obj.dispense.prescription.consultation.appointment.patient
-        return PatientMiniSerializer(patient).data
+    def get_patient_details(self, obj):
+        patient = obj.dispense.patient
+        return {
+            'patient_id': patient.patient_id,
+            'first_name': patient.first_name,
+            'last_name': patient.last_name,
+            'full_name': f"{patient.first_name} {patient.last_name}"
+        }
 
     def validate(self, data):
         dispense = data.get('dispense')
         total = data.get('total_amount')
         discount = data.get('discount', 0)
 
+        if not dispense:
+            raise ValidationError("Dispense is required")
+
         if total <= 0:
-            raise ValidationError("Total must be > 0")
+            raise ValidationError("Total must be greater than 0")
 
         if discount < 0:
             raise ValidationError("Discount cannot be negative")
 
         if discount > total:
-            raise ValidationError("Discount exceeds total")
+            raise ValidationError("Discount exceeds total amount")
+
+        if dispense.total_amount != total:
+            raise ValidationError(
+                f"Bill total ({total}) must match dispense total ({dispense.total_amount})"
+            )
 
         if MedicineBill.objects.filter(dispense=dispense).exists():
-            raise ValidationError("Bill already exists")
+            raise ValidationError("Bill already exists for this dispense")
 
         return data
 
@@ -659,33 +749,61 @@ class MedicineBillSerializer(serializers.ModelSerializer):
         return super().create(validated_data)
 
 
-# ------------------------------
-# Prescription Item (READ)
-# ------------------------------
+# ==============================
+# PRESCRIPTION ITEM READ SERIALIZER
+# ==============================
 class PrescriptionItemReadSerializer(serializers.ModelSerializer):
     medicine_name = serializers.CharField(source='medicine_name.name')
     medicine_id = serializers.IntegerField(source='medicine_name.medicine_id')
+    medicine_price = serializers.DecimalField(
+        source='medicine_name.price',
+        max_digits=10,
+        decimal_places=2,
+        read_only=True
+    )
 
     class Meta:
         model = PrescriptionItem
-        fields = ['medicine_id', 'medicine_name', 'dosage', 'frequency', 'duration', 'instructions']
+        fields = [
+            'medicine_id',
+            'medicine_name',
+            'medicine_price',
+            'dosage',
+            'frequency',
+            'duration',
+            'instructions'
+        ]
 
 
-# ------------------------------
-# Incoming Prescription Serializer
-# ------------------------------
+# ==============================
+# INCOMING PRESCRIPTION SERIALIZER
+# ==============================
 class IncomingPrescriptionSerializer(serializers.ModelSerializer):
     items = PrescriptionItemReadSerializer(many=True, read_only=True)
     patient_name = serializers.SerializerMethodField()
+    patient_id = serializers.SerializerMethodField()
     doctor_name = serializers.SerializerMethodField()
+    diagnosis = serializers.CharField(source='consultation.diagnosis', read_only=True)
+    prescription_id = serializers.IntegerField(source='id', read_only=True)
 
     class Meta:
         model = Prescription
         fields = [
-            'id', 'prescription_code', 'status',
-            'created_at', 'sent_at',
-            'patient_name', 'doctor_name', 'items'
+            'id',
+            'prescription_id',
+            'prescription_code',
+            'status',
+            'created_at',
+            'sent_at',
+            'patient_id',
+            'patient_name',
+            'doctor_name',
+            'diagnosis',
+            'items'
         ]
+
+    def get_patient_id(self, obj):
+        return obj.consultation.appointment.patient.patient_id
 
     def get_patient_name(self, obj):
         p = obj.consultation.appointment.patient

@@ -523,6 +523,7 @@ class AppointmentSerializer(serializers.ModelSerializer):
         model = Appointment
         fields = [
             "appointment_id",
+            "doctor",
             "appointment_date",
             "appointment_time",
             "token_number",
@@ -539,6 +540,7 @@ class PreviousConsultationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Consultation
         fields = [
+            "id",
             "consultation_code",
             "symptoms",
             "diagnosis",
