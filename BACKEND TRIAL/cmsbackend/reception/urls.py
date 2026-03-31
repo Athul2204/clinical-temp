@@ -34,7 +34,10 @@ from .views import (
     AppointmentListByDateView,
     CancelAppointmentView,
     CreateBillView,
-    PayBillView
+    PayBillView,
+    DoctorAvailabilityListView,
+    CreateDoctorAvailabilityView,
+    DeleteDoctorAvailabilityView,
 )
 
 urlpatterns = [
@@ -51,4 +54,9 @@ urlpatterns = [
     # Bills
     path('bills/create/', CreateBillView.as_view()),
     path('bills/<int:bill_id>/pay/', PayBillView.as_view()),
+
+    # Doctor Availability
+    path('availability/', DoctorAvailabilityListView.as_view()),
+    path('availability/create/', CreateDoctorAvailabilityView.as_view()),
+    path('availability/<int:availability_id>/delete/', DeleteDoctorAvailabilityView.as_view()),
 ]

@@ -227,7 +227,6 @@
 
 #     def __str__(self):
 #         return f"Bill {self.bill_id}"
-
 from django.db import models
 from django.utils import timezone
 from django.core.validators import MinValueValidator
@@ -404,36 +403,32 @@ class Appointment(models.Model):
         )
 
     # ------------------------------
-    # VALIDATION (FIXED)
+    # VALIDATION
     # ------------------------------
     def clean(self):
 
         if not self.doctor:
             raise ValidationError("Doctor is required")
 
-        # Prevent inactive doctor booking
         if self.doctor.staff and not self.doctor.staff.is_active:
             raise ValidationError("Cannot book inactive doctor")
 
         now = timezone.now()
 
-        # ❌ Past date
         if self.appointment_date < now.date():
             raise ValidationError("Appointment date cannot be in the past")
 
-        # ❌ Same-day time validation (FIXED)
         if self.appointment_date == now.date():
-
             appointment_datetime = timezone.make_aware(
                 datetime.combine(self.appointment_date, self.appointment_time)
             )
-
-            # ✅ Allow 2-minute buffer
             if appointment_datetime < now - timedelta(minutes=2):
                 raise ValidationError("Appointment time cannot be in the past")
 
     # ------------------------------
-    # SAVE LOGIC
+    # SAVE LOGIC  ✅ FIX: removed self.full_clean()
+    # full_clean() inside save() causes uncaught Django ValidationError
+    # which DRF serializer cannot catch → silent 500 crash on frontend
     # ------------------------------
     def save(self, *args, **kwargs):
 
@@ -442,15 +437,17 @@ class Appointment(models.Model):
             last_token = Appointment.objects.filter(
                 doctor=self.doctor,
                 appointment_date=self.appointment_date
+            ).exclude(
+                pk=self.pk  # ✅ exclude self when updating
             ).aggregate(models.Max('token_number'))['token_number__max']
 
             self.token_number = (last_token or 0) + 1
 
         # Store consultation fee
         if self.doctor:
-            self.consultation_fee = self.doctor.consultation_fee
+            self.consultation_fee = self.doctor.consultation_fee or 0  # ✅ FIX: fallback to 0
 
-        self.full_clean()
+        # ✅ FIX: REMOVED self.full_clean() — was causing uncaught ValidationError
         super().save(*args, **kwargs)
 
     def __str__(self):
@@ -491,9 +488,10 @@ class ConsultationBill(models.Model):
         editable=False
     )
 
+    # ✅ FIX: fallback to 0 if consultation_fee is None
     def save(self, *args, **kwargs):
         if self.appointment:
-            self.amount = self.appointment.consultation_fee
+            self.amount = self.appointment.consultation_fee or 0
         super().save(*args, **kwargs)
 
     def __str__(self):
@@ -501,7 +499,7 @@ class ConsultationBill(models.Model):
 
 
 # ------------------------------
-# AUTO CREATE BILL
+# AUTO CREATE BILL (signal)
 # ------------------------------
 from django.db.models.signals import post_save
 from django.dispatch import receiver
