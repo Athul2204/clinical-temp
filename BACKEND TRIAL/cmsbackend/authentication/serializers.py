@@ -83,12 +83,14 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         role = staff_profile.role.lower().replace(" ", "") if staff_profile else "admin"
 
         data['user'] = {
-            "id": user.id,
-            "username": user.username,
-            "email": user.email,
-            "is_staff": user.is_staff,
-            "role": role
-        }
+    "id": user.id,
+    "username": user.username,
+    "first_name": user.first_name,     # ADD THIS
+    "last_name": user.last_name,        # ADD THIS
+    "email": user.email,
+    "is_staff": user.is_staff,
+    "role": role
+}
 
         return data
 

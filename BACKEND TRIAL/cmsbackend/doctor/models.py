@@ -177,13 +177,12 @@
 #             raise ValidationError("Lab Test must be selected")
 
 #     def __str__(self):
-#         return f"{self.lab_test.test_name}"
-from django.db import models, transaction
+#         return f"{self.lab_test.test_name}"from django.db import models, transaction
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 from django.core.validators import MinValueValidator
 from pharmacist.models import Medicine
-
+from django.db import models, transaction
 
 # =========================
 # CONSULTATION
@@ -207,7 +206,6 @@ class Consultation(models.Model):
         if not self.appointment:
             raise ValidationError("Appointment is required")
 
-        # ✅ Safe doctor check
         doctor = getattr(self.appointment, "doctor", None)
         if not doctor:
             raise ValidationError("Appointment must have a doctor")
@@ -215,14 +213,12 @@ class Consultation(models.Model):
         if doctor.staff and not doctor.staff.is_active:
             raise ValidationError("Doctor is inactive")
 
-        # ✅ Allow ONLY today's consultation
         if self.appointment.appointment_date != timezone.localdate():
             raise ValidationError("Consultation allowed only for today's appointment")
 
         if self.appointment.status == "Cancelled":
             raise ValidationError("Cannot consult cancelled appointment")
 
-        # ✅ Prevent duplicate safely
         if Consultation.objects.filter(appointment=self.appointment).exclude(pk=self.pk).exists():
             raise ValidationError("Consultation already exists for this appointment")
 
@@ -245,10 +241,8 @@ class Consultation(models.Model):
         self.full_clean()
         super().save(*args, **kwargs)
 
-        # ✅ Update appointment status safely
-        if self.appointment.status == "Scheduled":
-            self.appointment.status = "Completed"
-            self.appointment.save(update_fields=["status"])
+        # ✅ Do NOT mark appointment Completed here.
+        # Appointment is only Completed after prescription is sent (send_to_pharmacy).
 
     def __str__(self):
         return self.consultation_code
@@ -330,7 +324,7 @@ class Prescription(models.Model):
         self.sent_at = timezone.now()
         self.save(update_fields=["status", "sent_at"])
 
-        # ✅ Ensure appointment completed
+        # ✅ Mark appointment Completed — single, correct place.
         appointment = self.consultation.appointment
         if appointment.status != "Completed":
             appointment.status = "Completed"
@@ -399,6 +393,11 @@ class LabTestRequest(models.Model):
     created_at = models.DateTimeField(default=timezone.now, editable=False)
     completed_at = models.DateTimeField(null=True, blank=True)
 
+    # ✅ NEW: Doctor explicitly acknowledges viewing lab results.
+    # Set only when doctor clicks "Mark as Viewed" — not automatically.
+    results_viewed = models.BooleanField(default=False)
+    results_viewed_at = models.DateTimeField(null=True, blank=True)
+
     def clean(self):
 
         if not self.consultation:
@@ -412,10 +411,17 @@ class LabTestRequest(models.Model):
 
     def save(self, *args, **kwargs):
 
-        self.full_clean()
+        # Skip full_clean for partial field-only updates (e.g. marking results viewed)
+        update_fields = kwargs.get("update_fields")
+        if not update_fields:
+            self.full_clean()
 
         if self.status == "Completed" and not self.completed_at:
             self.completed_at = timezone.now()
+
+        # Auto-stamp results_viewed_at when results_viewed is first set to True
+        if self.results_viewed and not self.results_viewed_at:
+            self.results_viewed_at = timezone.now()
 
         super().save(*args, **kwargs)
 

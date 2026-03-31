@@ -229,7 +229,6 @@
 
 #     def __str__(self):
 #         return f"Bill {self.bill_id} - {self.dispense.patient.first_name}"
-
 from django.db import models
 from django.core.exceptions import ValidationError
 from django.utils import timezone
@@ -273,18 +272,34 @@ class MedicineBatch(models.Model):
     created_at = models.DateTimeField(default=timezone.now)
 
     def clean(self):
-        if self.expiry_date < timezone.now().date():
-            raise ValidationError({'expiry_date': 'Must be future date.'})
+        # ✅ BUG #4 FIX: Only validate expiry_date when it is being set/changed.
+        # When save() is called with update_fields=['quantity'] from DispenseItem,
+        # full_clean() is NOT called at all (we skip it below), so this is safe.
+        # But if clean() IS called (normal create/update), always validate expiry.
+        if self.expiry_date and self.expiry_date < timezone.now().date():
+            raise ValidationError({'expiry_date': 'Must be a future date.'})
 
-        if self.quantity < 1:
+        if self.quantity is not None and self.quantity < 1:
             raise ValidationError({'quantity': 'Minimum 1 required.'})
 
     def save(self, *args, **kwargs):
+        # ✅ BUG #4 FIX: If called with update_fields (e.g. stock deduction from
+        # DispenseItem), SKIP full_clean entirely. full_clean() would re-validate
+        # expiry_date using today's date, which would fail for batches whose expiry
+        # date is still valid but close to today, OR raise spurious errors when
+        # only the quantity field is being updated.
+        update_fields = kwargs.get('update_fields')
+        if update_fields:
+            # Direct DB write — no validation needed for partial updates
+            super().save(*args, **kwargs)
+            return
+
+        # Auto-generate batch number on creation
         if not self.batch_number:
             last = MedicineBatch.objects.order_by('-batch_id').first()
             next_no = (int(last.batch_number[1:]) + 1) if last else 1
 
-            # ✅ Ensure uniqueness
+            # Ensure uniqueness by looping
             while True:
                 candidate = f"B{str(next_no).zfill(3)}"
                 if not MedicineBatch.objects.filter(batch_number=candidate).exists():
@@ -298,7 +313,7 @@ class MedicineBatch(models.Model):
         self.full_clean()
         super().save(*args, **kwargs)
 
-        # ✅ Stock log only on creation
+        # Create stock log only on first creation
         if is_new:
             MedicineStockLog.objects.create(
                 batch=self,
@@ -367,7 +382,7 @@ class Dispense(models.Model):
 
 
 # ------------------------------
-# Dispense Item (ONLY stock deduction happens here)
+# Dispense Item
 # ------------------------------
 class DispenseItem(models.Model):
     dispense = models.ForeignKey(Dispense, on_delete=models.CASCADE, related_name='items')
@@ -382,18 +397,45 @@ class DispenseItem(models.Model):
         if self.batch.expiry_date < timezone.now().date():
             raise ValidationError("Batch expired")
 
-        if self.quantity > self.batch.quantity:
-            raise ValidationError("Not enough stock")
+        # ✅ BUG #3 FIX: Check against the ACTUAL current DB quantity, not the
+        # in-memory value that may have already been decremented by another item
+        # in the same transaction.
+        if self.pk is None:
+            # New item — fetch fresh quantity from DB to avoid stale in-memory value
+            current_qty = MedicineBatch.objects.filter(
+                pk=self.batch.pk
+            ).values_list('quantity', flat=True).first()
+
+            if current_qty is None:
+                raise ValidationError("Batch not found")
+
+            if self.quantity > current_qty:
+                raise ValidationError(
+                    f"Not enough stock. Only {current_qty} unit(s) available in "
+                    f"batch {self.batch.batch_number}."
+                )
 
     def save(self, *args, **kwargs):
+        # Auto-set price from medicine
         self.price = self.batch.medicine.price
+
+        # Run validation (uses DB-fresh stock check above)
         self.full_clean()
 
         if not self.pk:
-            # ✅ ONLY deduction here (fixes your failing test)
-            self.batch.quantity -= self.quantity
-            self.batch.save(update_fields=['quantity'])
+            # ✅ BUG #3 FIX: Use QuerySet.update() instead of instance.save() to
+            # deduct stock. This bypasses MedicineBatch.save() entirely, which means
+            # full_clean() on MedicineBatch is NOT called. This prevents the bug
+            # where batch.save(update_fields=['quantity']) triggers full_clean(),
+            # which re-validates expiry_date and raises errors on valid batches.
+            MedicineBatch.objects.filter(pk=self.batch.pk).update(
+                quantity=models.F('quantity') - self.quantity
+            )
 
+            # Refresh in-memory batch so subsequent reads are accurate
+            self.batch.refresh_from_db(fields=['quantity'])
+
+            # Write stock log
             MedicineStockLog.objects.create(
                 batch=self.batch,
                 change_type='DISPENSE',

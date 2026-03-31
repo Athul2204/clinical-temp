@@ -183,23 +183,3 @@ def log_pharmacist_save(sender, instance, created, **kwargs):
 @receiver(post_delete, sender=StaffProfile)
 def log_staff_delete(sender, instance, **kwargs):
     create_log(instance, "DELETE", "Administration")
-
-@receiver(post_save, sender=StaffProfile)
-def handle_staff_post_save(sender, instance, created, **kwargs):
-
-    action = "CREATE" if created else "UPDATE"
-    create_log(instance, action, "Administration")
-
-    if created and instance.role:
-
-        if instance.role == "Doctor":
-            DoctorProfile.objects.get_or_create(staff=instance)
-
-        elif instance.role == "Receptionist":
-            ReceptionistProfile.objects.get_or_create(staff=instance)
-
-        elif instance.role == "Lab Technician":
-            LabTechnicianProfile.objects.get_or_create(staff=instance)
-
-        elif instance.role == "Pharmacist":
-            PharmacistProfile.objects.get_or_create(staff=instance)

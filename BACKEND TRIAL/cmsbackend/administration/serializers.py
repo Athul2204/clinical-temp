@@ -82,6 +82,12 @@ class StaffProfileSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         user_data = validated_data.pop("user")
 
+        # Password is mandatory when creating new staff — without it they cannot log in.
+        if not user_data.get("password"):
+            raise serializers.ValidationError({
+                "user": {"password": "A password is required when creating a new staff member."}
+            })
+
         user_serializer = UserSerializer(data=user_data)
         user_serializer.is_valid(raise_exception=True)
         user = user_serializer.save()

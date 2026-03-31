@@ -1,6 +1,14 @@
 from django.urls import path
-from .views import TodayAppointmentsView,ConsultationPageView,CreateConsultationView, CreateLabTestRequestView
-from .views import ViewLabResults,CreatePrescriptionView
+from .views import (
+    TodayAppointmentsView,
+    ConsultationPageView,
+    CreateConsultationView,
+    CreateLabTestRequestView,
+    ViewLabResults,
+    MarkLabResultsViewedView,
+    CompleteConsultationView,
+    CreatePrescriptionView,
+)
 
 
 urlpatterns = [
@@ -29,10 +37,21 @@ urlpatterns = [
         ViewLabResults.as_view(),
         name="view-lab-results"
     ),
+    # ✅ NEW: Doctor marks lab results as explicitly viewed
+    path(
+        "lab-results/<int:lab_request_id>/mark-viewed/",
+        MarkLabResultsViewedView.as_view(),
+        name="mark-lab-results-viewed"
+    ),
+    # ✅ Doctor marks consultation as Completed (after prescription written)
+    path(
+        "consultation/<int:appointment_id>/complete/",
+        CompleteConsultationView.as_view(),
+        name="complete-consultation"
+    ),
     path(
         "prescriptions/",
         CreatePrescriptionView.as_view(),
         name="create-prescription"
     ),
 ]
-

@@ -444,19 +444,16 @@ class MedicineSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
     def get_total_stock(self, obj):
-        """Get total non-expired stock"""
         today = timezone.now().date()
         batches = obj.batches.filter(expiry_date__gte=today)
         return sum(batch.quantity for batch in batches)
 
     def get_expired_stock(self, obj):
-        """Get expired stock"""
         today = timezone.now().date()
         batches = obj.batches.filter(expiry_date__lt=today)
         return sum(batch.quantity for batch in batches)
 
     def get_expiring_soon_stock(self, obj):
-        """Get stock expiring within 30 days"""
         today = timezone.now().date()
         next_30 = today + timedelta(days=30)
         batches = obj.batches.filter(
@@ -548,7 +545,7 @@ class MedicineStockLogSerializer(serializers.ModelSerializer):
 class DispenseItemSerializer(serializers.ModelSerializer):
     batch_number = serializers.CharField(source='batch.batch_number', read_only=True)
     medicine_name = serializers.CharField(source='batch.medicine.name', read_only=True)
-    
+
     class Meta:
         model = DispenseItem
         fields = ['batch', 'batch_number', 'medicine_name', 'quantity', 'price']
@@ -560,7 +557,7 @@ class DispenseItemSerializer(serializers.ModelSerializer):
 
         if not batch:
             raise ValidationError("Batch is required")
-        
+
         if not qty:
             raise ValidationError("Quantity is required")
 
@@ -568,30 +565,34 @@ class DispenseItemSerializer(serializers.ModelSerializer):
             raise ValidationError(f"Batch {batch.batch_number} expired")
 
         if qty > batch.quantity:
-            raise ValidationError(f"Only {batch.quantity} units available in batch {batch.batch_number}")
+            raise ValidationError(
+                f"Only {batch.quantity} units available in batch {batch.batch_number}"
+            )
 
         return data
 
 
 # ==============================
-# DISPENSE SERIALIZER (CRITICAL FIX)
+# DISPENSE SERIALIZER
 # ==============================
 class DispenseSerializer(serializers.ModelSerializer):
     items = DispenseItemSerializer(many=True)
     patient_details = serializers.SerializerMethodField(read_only=True)
-    prescription_code = serializers.CharField(source='prescription.prescription_code', read_only=True)
-    
+    prescription_code = serializers.CharField(
+        source='prescription.prescription_code', read_only=True
+    )
+
     class Meta:
         model = Dispense
         fields = [
-            'dispense_id', 
-            'prescription', 
-            'patient', 
+            'dispense_id',
+            'prescription',
+            'patient',
             'patient_details',
             'prescription_code',
-            'items', 
-            'status', 
-            'dispense_date', 
+            'items',
+            'status',
+            'dispense_date',
             'total_amount'
         ]
         read_only_fields = ['dispense_id', 'patient', 'dispense_date', 'total_amount']
@@ -628,15 +629,12 @@ class DispenseSerializer(serializers.ModelSerializer):
         items_data = validated_data.pop('items')
         prescription = validated_data['prescription']
 
-        # Get patient from prescription
         patient = prescription.consultation.appointment.patient
         validated_data['patient'] = patient
 
-        # Get allowed medicines from prescription
         prescription_items = PrescriptionItem.objects.filter(prescription=prescription)
         allowed_medicine_ids = [item.medicine_name_id for item in prescription_items]
 
-        # Calculate total and validate medicines
         total = 0
         validated_items = []
 
@@ -645,13 +643,9 @@ class DispenseSerializer(serializers.ModelSerializer):
             qty = item_data['quantity']
             medicine = batch.medicine
 
-            # Check if medicine is in prescription
             if medicine.medicine_id not in allowed_medicine_ids:
-                raise ValidationError(
-                    f"{medicine.name} is not in the prescription"
-                )
+                raise ValidationError(f"{medicine.name} is not in the prescription")
 
-            # Calculate item total
             item_total = qty * medicine.price
             total += item_total
 
@@ -661,12 +655,10 @@ class DispenseSerializer(serializers.ModelSerializer):
                 'price': medicine.price
             })
 
-        # Set total amount and create dispense
         validated_data['total_amount'] = total
         validated_data['status'] = 'Completed'
         dispense = Dispense.objects.create(**validated_data)
 
-        # Create dispense items (stock deduction happens in model save)
         for item_data in validated_items:
             DispenseItem.objects.create(
                 dispense=dispense,
@@ -674,7 +666,6 @@ class DispenseSerializer(serializers.ModelSerializer):
                 quantity=item_data['quantity']
             )
 
-        # Update prescription status
         prescription.status = "Dispensed"
         prescription.dispensed_at = timezone.now()
         prescription.save(update_fields=['status', 'dispensed_at'])
@@ -688,12 +679,15 @@ class DispenseSerializer(serializers.ModelSerializer):
 class MedicineBillSerializer(serializers.ModelSerializer):
     patient_details = serializers.SerializerMethodField(read_only=True)
     items = DispenseItemSerializer(source='dispense.items', many=True, read_only=True)
-    prescription_code = serializers.CharField(source='dispense.prescription.prescription_code', read_only=True)
+    prescription_code = serializers.CharField(
+        source='dispense.prescription.prescription_code', read_only=True
+    )
 
     class Meta:
         model = MedicineBill
         fields = [
             'bill_id',
+            
             'dispense',
             'total_amount',
             'discount',
@@ -716,29 +710,44 @@ class MedicineBillSerializer(serializers.ModelSerializer):
         }
 
     def validate(self, data):
+        # ✅ FIX: On PATCH (partial update), 'dispense' is not sent in the payload.
+        # The old code did `data.get('dispense')` which returned None for PATCH,
+        # then immediately raised "Dispense is required" — blocking Mark Paid entirely.
+        # Fix: only run the create-time validations when dispense IS present in data
+        # (i.e. during POST/create). For PATCH we only validate the fields being changed.
+
         dispense = data.get('dispense')
         total = data.get('total_amount')
         discount = data.get('discount', 0)
 
-        if not dispense:
-            raise ValidationError("Dispense is required")
+        # ── CREATE-ONLY validations (dispense must be present on create) ──
+        if dispense is not None:
+            if total is not None and total <= 0:
+                raise ValidationError("Total must be greater than 0")
 
-        if total <= 0:
-            raise ValidationError("Total must be greater than 0")
+            if discount < 0:
+                raise ValidationError("Discount cannot be negative")
 
-        if discount < 0:
-            raise ValidationError("Discount cannot be negative")
+            if total is not None and discount > total:
+                raise ValidationError("Discount exceeds total amount")
 
-        if discount > total:
-            raise ValidationError("Discount exceeds total amount")
+            if total is not None and dispense.total_amount != total:
+                raise ValidationError(
+                    f"Bill total ({total}) must match dispense total ({dispense.total_amount})"
+                )
 
-        if dispense.total_amount != total:
-            raise ValidationError(
-                f"Bill total ({total}) must match dispense total ({dispense.total_amount})"
-            )
+            # Prevent duplicate bill for this dispense (on create only)
+            instance = self.instance
+            qs = MedicineBill.objects.filter(dispense=dispense)
+            if instance:
+                qs = qs.exclude(pk=instance.pk)
+            if qs.exists():
+                raise ValidationError("Bill already exists for this dispense")
 
-        if MedicineBill.objects.filter(dispense=dispense).exists():
-            raise ValidationError("Bill already exists for this dispense")
+        # ── PATCH-ONLY validations (payment_status update) ──
+        payment_status = data.get('payment_status')
+        if payment_status and payment_status not in ('Pending', 'Paid'):
+            raise ValidationError("payment_status must be 'Pending' or 'Paid'")
 
         return data
 
@@ -747,6 +756,18 @@ class MedicineBillSerializer(serializers.ModelSerializer):
             validated_data['total_amount'] - validated_data.get('discount', 0)
         )
         return super().create(validated_data)
+
+    def update(self, instance, validated_data):
+        # ✅ On partial update (PATCH for Mark Paid), only update the fields sent.
+        # Recalculate final_amount if total_amount or discount changed.
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+
+        if 'total_amount' in validated_data or 'discount' in validated_data:
+            instance.final_amount = instance.total_amount - (instance.discount or 0)
+
+        instance.save()
+        return instance
 
 
 # ==============================
