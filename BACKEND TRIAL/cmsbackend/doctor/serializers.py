@@ -14,10 +14,6 @@ from pharmacist.models import Medicine
 from administration.models import DoctorProfile
 
 
-# -------------------------
-# BASIC SERIALIZERS
-# -------------------------
-
 class PatientBasicSerializer(serializers.ModelSerializer):
     class Meta:
         model = Patient
@@ -71,10 +67,6 @@ class AppointmentSerializer(serializers.ModelSerializer):
             "status",
         ]
 
-
-# -------------------------
-# CONSULTATION
-# -------------------------
 
 class PreviousConsultationSerializer(serializers.ModelSerializer):
     class Meta:
@@ -133,10 +125,6 @@ class ConsultationCreateSerializer(serializers.ModelSerializer):
         return data
 
 
-# -------------------------
-# PRESCRIPTION ITEMS
-# -------------------------
-
 class PrescriptionItemSerializer(serializers.ModelSerializer):
 
     medicine_display = serializers.CharField(
@@ -161,10 +149,6 @@ class PrescriptionItemSerializer(serializers.ModelSerializer):
         return value
 
 
-# -------------------------
-# PRESCRIPTION
-# -------------------------
-
 class PreviousPrescriptionSerializer(serializers.ModelSerializer):
     items = PrescriptionItemSerializer(many=True, read_only=True)
 
@@ -182,7 +166,6 @@ class PrescriptionCreateSerializer(serializers.ModelSerializer):
         fields = ["consultation", "doctor", "items"]
 
     def validate(self, data):
-
         consultation = data.get("consultation")
         doctor = data.get("doctor")
 
@@ -192,15 +175,13 @@ class PrescriptionCreateSerializer(serializers.ModelSerializer):
         if consultation.appointment.doctor != doctor:
             raise serializers.ValidationError("Doctor mismatch")
 
-        if Prescription.objects.filter(consultation=consultation).exists():
-            raise serializers.ValidationError("Prescription already exists")
-
-        # Only block if a lab request exists AND is still Pending.
-        lab_request = getattr(consultation, "lab_request", None)
-        if lab_request and lab_request.status == "Pending":
+        # ✅ Block prescription if ANY lab request is still Pending.
+        #    Once ALL requests are Completed, the doctor can write the prescription.
+        pending_lab_requests = consultation.lab_requests.filter(status="Pending")
+        if pending_lab_requests.exists():
             raise serializers.ValidationError(
-                "Cannot prescribe while lab tests are still pending. "
-                "Please wait for lab results first."
+                "Cannot write prescription while lab tests are still pending. "
+                "Please wait for all lab results first."
             )
 
         items = self.initial_data.get("items")
@@ -211,21 +192,16 @@ class PrescriptionCreateSerializer(serializers.ModelSerializer):
 
     @transaction.atomic
     def create(self, validated_data):
-
         items_data = validated_data.pop("items")
-
         prescription = Prescription.objects.create(**validated_data)
 
         medicine_set = set()
 
         for item in items_data:
-
             med = item["medicine_name"]
 
             if med in medicine_set:
-                raise serializers.ValidationError(
-                    "Duplicate medicine not allowed"
-                )
+                raise serializers.ValidationError("Duplicate medicine not allowed")
 
             medicine_set.add(med)
 
@@ -238,16 +214,19 @@ class PrescriptionCreateSerializer(serializers.ModelSerializer):
                 instructions=item.get("instructions", "")
             )
 
-        # ✅ Send to pharmacy and mark appointment Completed.
+        # Send to pharmacy and mark appointment Completed.
         prescription.send_to_pharmacy()
 
         return prescription
 
 
-# -------------------------
-# LAB TEST REQUEST
-# -------------------------
-
+# ===============================
+# LAB TEST REQUEST SERIALIZER
+# ===============================
+# ✅ FEATURE: Multiple lab requests are allowed per consultation.
+#    A doctor can send additional lab requests at any time (even after a
+#    previous one is Completed) as long as a new consultation exists.
+#    The only block is at prescription-write time: ALL must be Completed first.
 class LabTestRequestItemSerializer(serializers.ModelSerializer):
 
     class Meta:
@@ -274,7 +253,6 @@ class LabTestRequestSerializer(serializers.ModelSerializer):
         return value
 
     def validate(self, data):
-
         consultation = data.get("consultation")
         doctor = data.get("doctor")
 
@@ -284,8 +262,16 @@ class LabTestRequestSerializer(serializers.ModelSerializer):
         if consultation.appointment.doctor != doctor:
             raise serializers.ValidationError("Doctor mismatch")
 
-        if LabTestRequest.objects.filter(consultation=consultation).exists():
-            raise serializers.ValidationError("Lab request already exists")
+        # ✅ Allow additional lab requests even after a previous request is done.
+        #    Only block if there is already an ACTIVE (Pending) lab request.
+        #    This lets the doctor send a second batch of tests once the first
+        #    results are back, without needing to complete the whole consultation.
+        active_pending = consultation.lab_requests.filter(status="Pending")
+        if active_pending.exists():
+            raise serializers.ValidationError(
+                "There is already a pending lab request for this consultation. "
+                "Please wait for current tests to complete before sending more."
+            )
 
         tests = self.initial_data.get("tests")
         if not tests:
@@ -295,15 +281,12 @@ class LabTestRequestSerializer(serializers.ModelSerializer):
 
     @transaction.atomic
     def create(self, validated_data):
-
         tests_data = validated_data.pop("tests")
-
         lab_request = LabTestRequest.objects.create(**validated_data)
 
         test_set = set()
 
         for test in tests_data:
-
             lab_test = test["lab_test"]
 
             if lab_test in test_set:
@@ -318,10 +301,6 @@ class LabTestRequestSerializer(serializers.ModelSerializer):
 
         return lab_request
 
-
-# -------------------------
-# LAB RESULT
-# -------------------------
 
 class LabResultSerializer(serializers.ModelSerializer):
 

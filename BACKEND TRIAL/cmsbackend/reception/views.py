@@ -536,7 +536,6 @@
 #         return Response(
 #             {"message": "Bill marked as paid"}
 #         )
-
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -558,7 +557,7 @@ from .serializers import (
 # 1️⃣ CREATE PATIENT
 # ===============================
 class CreatePatientView(APIView):
-    permission_classes = [IsAuthenticated]  # ✅ FIX: explicit auth
+    permission_classes = [IsAuthenticated]
 
     @transaction.atomic
     def post(self, request):
@@ -569,7 +568,6 @@ class CreatePatientView(APIView):
                 {"message": "Patient created successfully", "patient_id": patient.patient_id},
                 status=status.HTTP_201_CREATED
             )
-        # ✅ FIX: always return serializer errors so frontend can display them
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -577,7 +575,7 @@ class CreatePatientView(APIView):
 # 2️⃣ LIST ALL PATIENTS
 # ===============================
 class PatientListView(APIView):
-    permission_classes = [IsAuthenticated]  # ✅ FIX: explicit auth
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         patients = Patient.objects.all().order_by("-created_at")
@@ -588,56 +586,112 @@ class PatientListView(APIView):
 # ===============================
 # 3️⃣ BOOK APPOINTMENT
 # ===============================
+# ✅ BILLING GATE: A new appointment can only be booked if the patient's most
+#    recent appointment has a PAID consultation bill (or they have no prior
+#    appointments). Enforces: "bill must be cleared before next visit."
 class CreateAppointmentView(APIView):
-    permission_classes = [IsAuthenticated]  # ✅ FIX: explicit auth
+    permission_classes = [IsAuthenticated]
 
     @transaction.atomic
     def post(self, request):
         serializer = AppointmentSerializer(data=request.data)
-        if serializer.is_valid():
-            try:
-                appointment = serializer.save()
-                return Response(
-                    {
-                        "message": "Appointment booked successfully",
-                        "appointment_id": appointment.appointment_id,
-                        "token_number": appointment.token_number,       # ✅ return token to frontend
-                        "consultation_fee": appointment.consultation_fee,
-                    },
-                    status=status.HTTP_201_CREATED
-                )
-            except Exception as e:
-                # ✅ FIX: catch any unexpected model-level errors and return proper response
-                return Response(
-                    {"error": str(e)},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-        # ✅ FIX: return validation errors clearly
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        patient_id = request.data.get("patient")
+
+        # ── BILLING GATE ──────────────────────────────────────────────────────
+        if patient_id:
+            last_appointment = (
+                Appointment.objects
+                .filter(patient_id=patient_id)
+                .exclude(status="Cancelled")
+                .order_by("-appointment_id")
+                .select_related("bill")
+                .first()
+            )
+            if last_appointment:
+                try:
+                    bill = last_appointment.bill
+                    if bill.status != "Paid":
+                        return Response(
+                            {
+                                "error": (
+                                    "Cannot schedule a new appointment. "
+                                    "The previous consultation bill is unpaid. "
+                                    "Please clear the outstanding bill first."
+                                ),
+                                "unpaid_bill_id": bill.bill_id,
+                                "unpaid_appointment_id": last_appointment.appointment_id,
+                            },
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
+                except ConsultationBill.DoesNotExist:
+                    return Response(
+                        {
+                            "error": (
+                                "Cannot schedule a new appointment. "
+                                "The previous appointment has no consultation bill. "
+                                "Please complete billing for that appointment first."
+                            ),
+                            "unpaid_appointment_id": last_appointment.appointment_id,
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+        # ─────────────────────────────────────────────────────────────────────
+
+        try:
+            appointment = serializer.save()
+            return Response(
+                {
+                    "message": "Appointment booked successfully",
+                    "appointment_id": appointment.appointment_id,
+                    "token_number": appointment.token_number,
+                    "consultation_fee": appointment.consultation_fee,
+                },
+                status=status.HTTP_201_CREATED,
+            )
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
 # ===============================
-# 4️⃣ GET APPOINTMENTS BY DATE
+# 4️⃣ GET APPOINTMENTS — flexible filter
 # ===============================
+# ✅ FIX: Supports ?date=, ?patient=, and ?appointment_id= filters.
 class AppointmentListByDateView(APIView):
-    permission_classes = [IsAuthenticated]  # ✅ FIX: explicit auth
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        date_param = request.query_params.get("date")
-        if not date_param:
-            return Response({"error": "Date is required"}, status=status.HTTP_400_BAD_REQUEST)
-        appointments = Appointment.objects.filter(
-            appointment_date=date_param
-        ).order_by("token_number")
-        serializer = AppointmentSerializer(appointments, many=True)
-        return Response({"count": appointments.count(), "data": serializer.data})
+        date_param           = request.query_params.get("date")
+        patient_param        = request.query_params.get("patient")
+        appointment_id_param = request.query_params.get("appointment_id")
+
+        if not any([date_param, patient_param, appointment_id_param]):
+            return Response(
+                {"error": "At least one filter is required: date, patient, or appointment_id"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        qs = Appointment.objects.select_related("patient", "doctor__staff", "bill").all()
+
+        if date_param:
+            qs = qs.filter(appointment_date=date_param)
+        if patient_param:
+            qs = qs.filter(patient__patient_id=patient_param)
+        if appointment_id_param:
+            qs = qs.filter(appointment_id=appointment_id_param)
+
+        qs = qs.order_by("token_number")
+        serializer = AppointmentSerializer(qs, many=True)
+        return Response({"count": qs.count(), "data": serializer.data})
 
 
 # ===============================
 # 5️⃣ CANCEL APPOINTMENT
 # ===============================
 class CancelAppointmentView(APIView):
-    permission_classes = [IsAuthenticated]  # ✅ FIX: explicit auth
+    permission_classes = [IsAuthenticated]
 
     @transaction.atomic
     def patch(self, request, appointment_id):
@@ -655,10 +709,10 @@ class CancelAppointmentView(APIView):
 
 
 # ===============================
-# 6️⃣ GENERATE BILL
+# 6️⃣ GENERATE CONSULTATION BILL
 # ===============================
 class CreateBillView(APIView):
-    permission_classes = [IsAuthenticated]  # ✅ FIX: explicit auth
+    permission_classes = [IsAuthenticated]
 
     @transaction.atomic
     def post(self, request):
@@ -667,16 +721,16 @@ class CreateBillView(APIView):
             bill = serializer.save()
             return Response(
                 {"message": "Bill generated successfully", "bill_id": bill.bill_id},
-                status=status.HTTP_201_CREATED
+                status=status.HTTP_201_CREATED,
             )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 # ===============================
-# 7️⃣ PAY BILL
+# 7️⃣ PAY CONSULTATION BILL
 # ===============================
 class PayBillView(APIView):
-    permission_classes = [IsAuthenticated]  # ✅ FIX: explicit auth
+    permission_classes = [IsAuthenticated]
 
     @transaction.atomic
     def patch(self, request, bill_id):
@@ -697,7 +751,7 @@ class PayBillView(APIView):
 # 8️⃣ LIST DOCTOR AVAILABILITY
 # ===============================
 class DoctorAvailabilityListView(APIView):
-    permission_classes = [IsAuthenticated]  # ✅ FIX: explicit auth
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         date_param = request.query_params.get("date")
@@ -713,7 +767,7 @@ class DoctorAvailabilityListView(APIView):
 # 9️⃣ CREATE DOCTOR AVAILABILITY
 # ================================
 class CreateDoctorAvailabilityView(APIView):
-    permission_classes = [IsAuthenticated]  # ✅ FIX: explicit auth
+    permission_classes = [IsAuthenticated]
 
     @transaction.atomic
     def post(self, request):
@@ -722,7 +776,7 @@ class CreateDoctorAvailabilityView(APIView):
             slot = serializer.save()
             return Response(
                 {"message": "Availability added successfully", "availability_id": slot.availability_id},
-                status=status.HTTP_201_CREATED
+                status=status.HTTP_201_CREATED,
             )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -731,7 +785,7 @@ class CreateDoctorAvailabilityView(APIView):
 # 🔟 DELETE DOCTOR AVAILABILITY
 # =================================
 class DeleteDoctorAvailabilityView(APIView):
-    permission_classes = [IsAuthenticated]  # ✅ FIX: explicit auth
+    permission_classes = [IsAuthenticated]
 
     @transaction.atomic
     def delete(self, request, availability_id):
