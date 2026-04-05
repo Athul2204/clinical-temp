@@ -536,11 +536,11 @@
 #         return Response(
 #             {"message": "Bill marked as paid"}
 #         )
+# reception/views.py
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
-from django.utils import timezone
 from django.db import transaction
 
 from .models import Patient, Appointment, ConsultationBill, DoctorAvailability
@@ -551,13 +551,17 @@ from .serializers import (
     ConsultationBillSerializer,
     DoctorAvailabilitySerializer,
 )
+from authentication.permissions import IsReceptionist
 
 
-# ===============================
-# 1️⃣ CREATE PATIENT
-# ===============================
+# Every view in this file enforces IsReceptionist.
+# A doctor, pharmacist, lab tech, or admin hitting these endpoints
+# directly (e.g. via curl/Postman with a valid token) will get 403.
+
+
+# ─── 1. CREATE PATIENT ───────────────────────────────────────────
 class CreatePatientView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsReceptionist]
 
     @transaction.atomic
     def post(self, request):
@@ -566,16 +570,14 @@ class CreatePatientView(APIView):
             patient = serializer.save()
             return Response(
                 {"message": "Patient created successfully", "patient_id": patient.patient_id},
-                status=status.HTTP_201_CREATED
+                status=status.HTTP_201_CREATED,
             )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-# ===============================
-# 2️⃣ LIST ALL PATIENTS
-# ===============================
+# ─── 2. LIST ALL PATIENTS ────────────────────────────────────────
 class PatientListView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsReceptionist]
 
     def get(self, request):
         patients = Patient.objects.all().order_by("-created_at")
@@ -583,14 +585,9 @@ class PatientListView(APIView):
         return Response({"count": patients.count(), "data": serializer.data})
 
 
-# ===============================
-# 3️⃣ BOOK APPOINTMENT
-# ===============================
-# ✅ BILLING GATE: A new appointment can only be booked if the patient's most
-#    recent appointment has a PAID consultation bill (or they have no prior
-#    appointments). Enforces: "bill must be cleared before next visit."
+# ─── 3. BOOK APPOINTMENT ─────────────────────────────────────────
 class CreateAppointmentView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsReceptionist]
 
     @transaction.atomic
     def post(self, request):
@@ -600,7 +597,7 @@ class CreateAppointmentView(APIView):
 
         patient_id = request.data.get("patient")
 
-        # ── BILLING GATE ──────────────────────────────────────────────────────
+        # Billing gate: block new appointment if previous bill is unpaid
         if patient_id:
             last_appointment = (
                 Appointment.objects
@@ -638,7 +635,6 @@ class CreateAppointmentView(APIView):
                         },
                         status=status.HTTP_400_BAD_REQUEST,
                     )
-        # ─────────────────────────────────────────────────────────────────────
 
         try:
             appointment = serializer.save()
@@ -655,12 +651,9 @@ class CreateAppointmentView(APIView):
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
-# ===============================
-# 4️⃣ GET APPOINTMENTS — flexible filter
-# ===============================
-# ✅ FIX: Supports ?date=, ?patient=, and ?appointment_id= filters.
+# ─── 4. GET APPOINTMENTS BY DATE ─────────────────────────────────
 class AppointmentListByDateView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsReceptionist]
 
     def get(self, request):
         date_param           = request.query_params.get("date")
@@ -674,7 +667,6 @@ class AppointmentListByDateView(APIView):
             )
 
         qs = Appointment.objects.select_related("patient", "doctor__staff", "bill").all()
-
         if date_param:
             qs = qs.filter(appointment_date=date_param)
         if patient_param:
@@ -683,15 +675,12 @@ class AppointmentListByDateView(APIView):
             qs = qs.filter(appointment_id=appointment_id_param)
 
         qs = qs.order_by("token_number")
-        serializer = AppointmentSerializer(qs, many=True)
-        return Response({"count": qs.count(), "data": serializer.data})
+        return Response({"count": qs.count(), "data": AppointmentSerializer(qs, many=True).data})
 
 
-# ===============================
-# 5️⃣ CANCEL APPOINTMENT
-# ===============================
+# ─── 5. CANCEL APPOINTMENT ───────────────────────────────────────
 class CancelAppointmentView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsReceptionist]
 
     @transaction.atomic
     def patch(self, request, appointment_id):
@@ -708,11 +697,9 @@ class CancelAppointmentView(APIView):
         return Response({"message": "Appointment cancelled successfully"})
 
 
-# ===============================
-# 6️⃣ GENERATE CONSULTATION BILL
-# ===============================
+# ─── 6. GENERATE CONSULTATION BILL ───────────────────────────────
 class CreateBillView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsReceptionist]
 
     @transaction.atomic
     def post(self, request):
@@ -726,11 +713,9 @@ class CreateBillView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-# ===============================
-# 7️⃣ PAY CONSULTATION BILL
-# ===============================
+# ─── 7. PAY CONSULTATION BILL ────────────────────────────────────
 class PayBillView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsReceptionist]
 
     @transaction.atomic
     def patch(self, request, bill_id):
@@ -747,11 +732,9 @@ class PayBillView(APIView):
         return Response({"message": "Bill marked as paid"})
 
 
-# ===============================
-# 8️⃣ LIST DOCTOR AVAILABILITY
-# ===============================
+# ─── 8. DOCTOR AVAILABILITY (read: receptionist; write: receptionist) ──
 class DoctorAvailabilityListView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsReceptionist]
 
     def get(self, request):
         date_param = request.query_params.get("date")
@@ -759,15 +742,11 @@ class DoctorAvailabilityListView(APIView):
         if date_param:
             qs = qs.filter(available_date=date_param)
         qs = qs.order_by("available_date", "start_time")
-        serializer = DoctorAvailabilitySerializer(qs, many=True)
-        return Response({"count": qs.count(), "data": serializer.data})
+        return Response({"count": qs.count(), "data": DoctorAvailabilitySerializer(qs, many=True).data})
 
 
-# ================================
-# 9️⃣ CREATE DOCTOR AVAILABILITY
-# ================================
 class CreateDoctorAvailabilityView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsReceptionist]
 
     @transaction.atomic
     def post(self, request):
@@ -781,11 +760,8 @@ class CreateDoctorAvailabilityView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-# =================================
-# 🔟 DELETE DOCTOR AVAILABILITY
-# =================================
 class DeleteDoctorAvailabilityView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsReceptionist]
 
     @transaction.atomic
     def delete(self, request, availability_id):

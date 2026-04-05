@@ -570,16 +570,19 @@
 #             serializer.errors,
 #             status=status.HTTP_400_BAD_REQUEST
 #         )
-
 from django.utils import timezone
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework import status
-from rest_framework.permissions import BasePermission
+from rest_framework import status, serializers
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.generics import ListAPIView
 
 from reception.models import Appointment
 from doctor.models import Consultation, Prescription, LabTestRequest
-from labtechnician.models import LabResult
+from labtechnician.models import LabResult, LabTest
+from pharmacist.models import Medicine
+
+from authentication.permissions import IsDoctor
 
 from .serializers import (
     TodayAppointmentSerializer,
@@ -592,17 +595,6 @@ from .serializers import (
     LabResultViewSerializer,
     PrescriptionCreateSerializer,
 )
-
-
-# ===============================
-# Custom Permission: Doctor Only
-# ===============================
-class IsDoctor(BasePermission):
-    def has_permission(self, request, view):
-        try:
-            return request.user.staff_profile.role == "Doctor"
-        except AttributeError:
-            return False
 
 
 # ===============================
@@ -624,10 +616,7 @@ class TodayAppointmentsView(APIView):
     def get(self, request):
         doctor = get_logged_in_doctor(request)
         if not doctor:
-            return Response(
-                {"message": "Doctor profile not found"},
-                status=status.HTTP_403_FORBIDDEN
-            )
+            return Response({"message": "Doctor profile not found"}, status=403)
 
         today = timezone.now().date()
         appointments = Appointment.objects.filter(
@@ -635,19 +624,15 @@ class TodayAppointmentsView(APIView):
             appointment_date=today
         ).order_by("token_number")
 
-        serializer = TodayAppointmentSerializer(appointments, many=True)
-        return Response(
-            {
-                "message": "Today's appointments fetched successfully",
-                "count": appointments.count(),
-                "data": serializer.data,
-            },
-            status=status.HTTP_200_OK,
-        )
+        return Response({
+            "message": "Today's appointments fetched successfully",
+            "count": appointments.count(),
+            "data": TodayAppointmentSerializer(appointments, many=True).data,
+        })
 
 
 # ===============================
-# 2️⃣ CONSULTATION PAGE DATA
+# 2️⃣ CONSULTATION PAGE
 # ===============================
 class ConsultationPageView(APIView):
     permission_classes = [IsDoctor]
@@ -655,10 +640,7 @@ class ConsultationPageView(APIView):
     def get(self, request, appointment_id):
         doctor = get_logged_in_doctor(request)
         if not doctor:
-            return Response(
-                {"message": "Doctor profile not found"},
-                status=status.HTTP_403_FORBIDDEN
-            )
+            return Response({"message": "Doctor profile not found"}, status=403)
 
         try:
             appointment = Appointment.objects.get(
@@ -666,10 +648,7 @@ class ConsultationPageView(APIView):
                 doctor=doctor
             )
         except Appointment.DoesNotExist:
-            return Response(
-                {"message": "Appointment not found"},
-                status=status.HTTP_404_NOT_FOUND
-            )
+            return Response({"message": "Appointment not found"}, status=404)
 
         patient = appointment.patient
 
@@ -679,62 +658,43 @@ class ConsultationPageView(APIView):
 
         previous_consultations = Consultation.objects.filter(
             appointment__patient=patient
-        ).exclude(
-            appointment=appointment
-        ).order_by("-created_at")[:3]
+        ).exclude(appointment=appointment).order_by("-created_at")[:3]
 
         previous_prescriptions = Prescription.objects.filter(
             consultation__appointment__patient=patient
         ).order_by("-created_at")[:3]
 
-        # ✅ ISSUE 1 FIX: Handle multiple lab requests per consultation
-        # Fetch ALL lab requests for the current consultation, not just one
-        lab_results = []
-        all_lab_requests = []
-        
+        # ✅ FIX: Multiple lab requests
+        lab_requests_data = []
         if current_consultation:
-            # Get all lab requests for this consultation
-            lab_requests = current_consultation.lab_requests.all().order_by("-created_at")
-            
-            for lab_request in lab_requests:
-                current_lab_results = LabResult.objects.filter(
+            for lab_request in current_consultation.lab_requests.all().order_by("-created_at"):
+                results = LabResult.objects.filter(
                     lab_order_item__lab_order__lab_request=lab_request
                 ).order_by("-created_at")
-                
-                all_lab_requests.append({
+
+                lab_requests_data.append({
                     "lab_request_id": lab_request.id,
                     "status": lab_request.status,
                     "results_viewed": lab_request.results_viewed,
                     "created_at": lab_request.created_at,
                     "notes": lab_request.notes,
-                    "results": LabResultViewSerializer(current_lab_results, many=True).data
+                    "results": LabResultViewSerializer(results, many=True).data,
                 })
 
-        data = {
-            "appointment": AppointmentSerializer(appointment).data,
-            "patient": PatientDetailSerializer(patient).data,
-            "current_consultation": (
-                PreviousConsultationSerializer(current_consultation).data
-                if current_consultation
-                else None
-            ),
-            "previous_consultations": PreviousConsultationSerializer(
-                previous_consultations, many=True
-            ).data,
-            "previous_prescriptions": PreviousPrescriptionSerializer(
-                previous_prescriptions, many=True
-            ).data,
-            # ✅ ISSUE 1 FIX: Return all lab requests with their results
-            "lab_requests": all_lab_requests,
-        }
-
-        return Response(
-            {
-                "message": "Consultation page data fetched successfully",
-                "data": data,
+        return Response({
+            "message": "Consultation page data fetched successfully",
+            "data": {
+                "appointment": AppointmentSerializer(appointment).data,
+                "patient": PatientDetailSerializer(patient).data,
+                "current_consultation": (
+                    PreviousConsultationSerializer(current_consultation).data
+                    if current_consultation else None
+                ),
+                "previous_consultations": PreviousConsultationSerializer(previous_consultations, many=True).data,
+                "previous_prescriptions": PreviousPrescriptionSerializer(previous_prescriptions, many=True).data,
+                "lab_requests": lab_requests_data,
             },
-            status=status.HTTP_200_OK,
-        )
+        })
 
 
 # ===============================
@@ -748,20 +708,19 @@ class CreateConsultationView(APIView):
             data=request.data,
             context={"request": request}
         )
+
         if serializer.is_valid():
             consultation = serializer.save()
-            return Response(
-                {
-                    "message": "Consultation created successfully",
-                    "consultation_code": consultation.consultation_code,
-                },
-                status=status.HTTP_201_CREATED,
-            )
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            return Response({
+                "message": "Consultation created successfully",
+                "consultation_code": consultation.consultation_code,
+            }, status=201)
+
+        return Response(serializer.errors, status=400)
 
 
 # ===============================
-# 4️⃣ CREATE LAB TEST REQUEST
+# 4️⃣ CREATE LAB REQUEST
 # ===============================
 class CreateLabTestRequestView(APIView):
     permission_classes = [IsDoctor]
@@ -771,16 +730,15 @@ class CreateLabTestRequestView(APIView):
             data=request.data,
             context={"request": request}
         )
+
         if serializer.is_valid():
             lab_request = serializer.save()
-            return Response(
-                {
-                    "message": "Lab test request created successfully",
-                    "lab_request_id": lab_request.id,
-                },
-                status=status.HTTP_201_CREATED,
-            )
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            return Response({
+                "message": "Lab test request created successfully",
+                "lab_request_id": lab_request.id,
+            }, status=201)
+
+        return Response(serializer.errors, status=400)
 
 
 # ===============================
@@ -793,146 +751,84 @@ class ViewLabResults(APIView):
         try:
             consultation = Consultation.objects.get(id=consultation_id)
         except Consultation.DoesNotExist:
-            return Response(
-                {"message": "Consultation not found"},
-                status=status.HTTP_404_NOT_FOUND
-            )
+            return Response({"message": "Consultation not found"}, status=404)
 
-        lab_results = LabResult.objects.filter(
+        results = LabResult.objects.filter(
             lab_order_item__lab_order__lab_request__consultation=consultation
         )
-        serializer = LabResultViewSerializer(lab_results, many=True)
-        return Response(
-            {
-                "message": "Lab results fetched successfully",
-                "results": serializer.data,
-            },
-            status=status.HTTP_200_OK,
-        )
+
+        return Response({
+            "message": "Lab results fetched successfully",
+            "results": LabResultViewSerializer(results, many=True).data,
+        })
 
 
 # ===============================
-# 6️⃣ MARK LAB RESULTS AS VIEWED
+# 6️⃣ MARK RESULTS VIEWED
 # ===============================
 class MarkLabResultsViewedView(APIView):
-    """
-    POST /api/doctor/lab-results/<lab_request_id>/mark-viewed/
-    Doctor explicitly acknowledges they have reviewed the lab results.
-    Sets results_viewed=True and stamps results_viewed_at timestamp.
-    """
     permission_classes = [IsDoctor]
 
     def post(self, request, lab_request_id):
         doctor = get_logged_in_doctor(request)
         if not doctor:
-            return Response(
-                {"message": "Doctor profile not found"},
-                status=status.HTTP_403_FORBIDDEN
-            )
+            return Response({"message": "Doctor profile not found"}, status=403)
 
         try:
-            lab_request = LabTestRequest.objects.select_related(
-                "consultation__appointment"
-            ).get(id=lab_request_id)
+            lab_request = LabTestRequest.objects.get(id=lab_request_id)
         except LabTestRequest.DoesNotExist:
-            return Response(
-                {"message": "Lab request not found"},
-                status=status.HTTP_404_NOT_FOUND
-            )
+            return Response({"message": "Lab request not found"}, status=404)
 
-        # Ensure this lab request belongs to the logged-in doctor
         if lab_request.doctor != doctor:
-            return Response(
-                {"message": "Not authorised to mark this lab request"},
-                status=status.HTTP_403_FORBIDDEN
-            )
+            return Response({"message": "Not authorised"}, status=403)
 
         if lab_request.results_viewed:
-            return Response(
-                {
-                    "message": "Lab results already marked as viewed",
-                    "results_viewed": True,
-                    "results_viewed_at": lab_request.results_viewed_at,
-                },
-                status=status.HTTP_200_OK,
-            )
-
-        # Mark as viewed
-        lab_request.results_viewed = True
-        lab_request.results_viewed_at = timezone.now()
-        lab_request.save(update_fields=["results_viewed", "results_viewed_at"])
-
-        return Response(
-            {
-                "message": "Lab results marked as viewed successfully",
+            return Response({
+                "message": "Already viewed",
                 "results_viewed": True,
                 "results_viewed_at": lab_request.results_viewed_at,
-            },
-            status=status.HTTP_200_OK,
-        )
+            })
+
+        lab_request.results_viewed = True
+        lab_request.results_viewed_at = timezone.now()
+        lab_request.save()
+
+        return Response({"message": "Marked as viewed"})
 
 
 # ===============================
 # 7️⃣ COMPLETE CONSULTATION
 # ===============================
 class CompleteConsultationView(APIView):
-    """
-    PATCH /api/doctor/consultation/<appointment_id>/complete/
-    Doctor manually marks a consultation as Completed.
-    Requirements:
-      - A consultation must exist for the appointment.
-      - A prescription must have been written for that consultation.
-    """
     permission_classes = [IsDoctor]
 
     def patch(self, request, appointment_id):
         doctor = get_logged_in_doctor(request)
         if not doctor:
-            return Response(
-                {"message": "Doctor profile not found"},
-                status=status.HTTP_403_FORBIDDEN,
-            )
+            return Response({"message": "Doctor profile not found"}, status=403)
 
         try:
             appointment = Appointment.objects.get(
                 appointment_id=appointment_id,
-                doctor=doctor,
+                doctor=doctor
             )
         except Appointment.DoesNotExist:
-            return Response(
-                {"message": "Appointment not found"},
-                status=status.HTTP_404_NOT_FOUND,
-            )
+            return Response({"message": "Appointment not found"}, status=404)
 
         if appointment.status == "Completed":
-            return Response(
-                {"message": "Consultation is already completed."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return Response({"message": "Already completed"}, status=400)
 
         consultation = Consultation.objects.filter(appointment=appointment).first()
         if not consultation:
-            return Response(
-                {"message": "No consultation found. Please add a consultation first."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return Response({"message": "Create consultation first"}, status=400)
 
-        has_prescription = Prescription.objects.filter(
-            consultation=consultation
-        ).exists()
-        if not has_prescription:
-            return Response(
-                {"message": "Please write a prescription before completing this consultation."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        if not Prescription.objects.filter(consultation=consultation).exists():
+            return Response({"message": "Add prescription first"}, status=400)
 
         appointment.status = "Completed"
-        appointment.save(update_fields=["status"])
+        appointment.save()
 
-        return Response(
-            {"message": "Consultation marked as Completed successfully."},
-            status=status.HTTP_200_OK,
-        )
+        return Response({"message": "Completed successfully"})
 
 
 # ===============================
@@ -946,45 +842,44 @@ class CreatePrescriptionView(APIView):
             data=request.data,
             context={"request": request}
         )
+
         if serializer.is_valid():
             prescription = serializer.save()
-            return Response(
-                {
-                    "message": "Prescription created successfully",
-                    "prescription_code": prescription.prescription_code,
-                },
-                status=status.HTTP_201_CREATED,
-            )
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
-from labtechnician.models import LabTest
-from rest_framework.generics import ListAPIView
-from rest_framework.permissions import IsAuthenticated
-from rest_framework import serializers
+            return Response({
+                "message": "Prescription created",
+                "prescription_code": prescription.prescription_code,
+            }, status=201)
 
+        return Response(serializer.errors, status=400)
+
+
+# ===============================
+# 9️⃣ LAB TEST LIST
+# ===============================
 class LabTestSerializer(serializers.ModelSerializer):
     class Meta:
         model = LabTest
         fields = ["test_id", "test_name"]
+
 
 class LabTestListView(ListAPIView):
     queryset = LabTest.objects.all()
     serializer_class = LabTestSerializer
     permission_classes = [IsAuthenticated]
 
-from pharmacist.models import Medicine
-from rest_framework.permissions import IsAuthenticated
 
+# ===============================
+# 🔟 MEDICINE LIST
+# ===============================
 class MedicineListView(APIView):
-    permission_classes = [IsDoctor]   # or IsAuthenticated
+    permission_classes = [IsDoctor]
 
     def get(self, request):
         medicines = Medicine.objects.all().order_by("name")
+
         data = [
-            {
-                "id": m.medicine_id,
-                "name": m.name
-            }
+            {"id": m.medicine_id, "name": m.name}
             for m in medicines
         ]
-        return Response(data, status=status.HTTP_200_OK)
+
+        return Response(data)
