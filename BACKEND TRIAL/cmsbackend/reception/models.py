@@ -232,14 +232,15 @@ from django.utils import timezone
 from django.core.validators import MinValueValidator
 from django.core.exceptions import ValidationError
 from administration.models import DoctorProfile
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 
 
 # ------------------------------
 # DOB VALIDATION
 # ------------------------------
 def validate_dob(value):
-    if value > date.today():
+    today = timezone.now().date()
+    if value > today:
         raise ValidationError("Date of birth cannot be in the future")
 
 

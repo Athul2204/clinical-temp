@@ -92,8 +92,8 @@ class LabResultSerializer(serializers.ModelSerializer):
         return cleaned
 
     def validate(self, attrs):
-        # ✅ BILLING GATE: Lab results can only be entered after the lab bill is Paid.
-        #    Flow: Lab Order created → Lab Bill generated → Bill paid → Enter results.
+        # BILLING GATE: Lab results can only be entered after the lab bill is Paid.
+        #    Flow: Lab Order created → Lab Bill created → Bill paid → Enter results.
         lab_order_item = (
             attrs.get('lab_order_item')
             or getattr(self.instance, 'lab_order_item', None)
@@ -102,18 +102,24 @@ class LabResultSerializer(serializers.ModelSerializer):
         if lab_order_item:
             lab_order = lab_order_item.lab_order
 
-            # Check bill exists and is Paid
+            # Check bill exists and is Paid.
+            # Must catch Exception broadly — Django raises RelatedObjectDoesNotExist
+            # (subclass of ObjectDoesNotExist, NOT LabBill.DoesNotExist) on a reverse
+            # OneToOneField accessor when the related row is missing.
             try:
-                bill = lab_order.labbill  # OneToOneField reverse accessor
+                bill = lab_order.labbill  # reverse accessor for LabBill.lab_order
                 if bill.payment_status != "Paid":
                     raise serializers.ValidationError(
                         "Cannot enter lab results before the lab bill is paid. "
-                        f"Current bill status: {bill.payment_status}."
+                        f"Current bill status: {bill.payment_status}. "
+                        "Please go to the Billing section and mark the bill as Paid first."
                     )
-            except LabBill.DoesNotExist:
+            except serializers.ValidationError:
+                raise  # re-raise our own validation errors unchanged
+            except Exception:
                 raise serializers.ValidationError(
                     "Cannot enter lab results. No lab bill has been generated for this order yet. "
-                    "Please create and pay the lab bill first."
+                    "Please go to the Billing section, create a bill for this order, and mark it as Paid."
                 )
 
         return attrs

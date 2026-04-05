@@ -4,7 +4,7 @@ from rest_framework import serializers
 from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
 from django.db import transaction
-from datetime import date
+from django.utils import timezone
 
 from .models import (
     StaffProfile, DoctorProfile, ReceptionistProfile,
@@ -59,7 +59,8 @@ def validate_qualification_for_role(role, qualification):
 def calculate_age(dob):
     if not dob:
         return 0
-    return (date.today() - dob).days // 365
+    today = timezone.now().date()
+    return (today - dob).days // 365
 
 
 # ─── USER SERIALIZER ──────────────────────────────────────

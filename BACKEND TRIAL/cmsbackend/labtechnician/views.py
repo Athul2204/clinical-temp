@@ -91,7 +91,7 @@ class IncomingLabRequestsView(LabTechnicianBaseViewSet):
 
             try:
                 s = lr.doctor.staff
-                doctor_name = f"{s.first_name} {s.last_name}".strip()
+                doctor_name = f"{s.user.first_name} {s.user.last_name}".strip()
             except Exception:
                 doctor_name = f"Doctor #{lr.doctor_id}"
 

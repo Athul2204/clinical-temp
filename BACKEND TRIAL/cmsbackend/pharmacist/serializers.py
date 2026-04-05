@@ -396,8 +396,12 @@ class MedicineBillSerializer(serializers.ModelSerializer):
 
         return result
     def get_doctor_name(self, obj):
-        doctor = obj.dispense.prescription.doctor
-        return str(doctor)
+        try:
+            doctor = obj.dispense.prescription.doctor
+            user = doctor.staff.user
+            return f"{user.first_name} {user.last_name}".strip() or doctor.staff.staff_code
+        except Exception:
+            return str(obj.dispense.prescription.doctor)
     def get_bill_note(self, obj):
         items = self.get_items(obj)
 
@@ -523,7 +527,11 @@ class IncomingPrescriptionSerializer(serializers.ModelSerializer):
         return f"{p.first_name} {p.last_name}"
 
     def get_doctor_name(self, obj):
-        return str(obj.doctor)
+        try:
+            user = obj.doctor.staff.user
+            return f"{user.first_name} {user.last_name}".strip() or obj.doctor.staff.staff_code
+        except Exception:
+            return str(obj.doctor)
 
     def get_appointment_id(self, obj):
         return obj.consultation.appointment.appointment_id

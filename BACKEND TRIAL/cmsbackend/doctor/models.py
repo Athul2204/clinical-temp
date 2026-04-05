@@ -572,7 +572,8 @@ class Consultation(models.Model):
         if doctor.staff and not doctor.staff.is_active:
             raise ValidationError("Doctor is inactive")
 
-        if self.appointment.appointment_date != timezone.localdate():
+        today = timezone.now().date()
+        if self.appointment.appointment_date != today:
             raise ValidationError("Consultation allowed only for today's appointment")
 
         if self.appointment.status == "Cancelled":

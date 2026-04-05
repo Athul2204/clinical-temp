@@ -3,11 +3,11 @@ from django.core.validators import RegexValidator, MinValueValidator
 from django.utils import timezone
 from django.contrib.auth.models import User
 from django.core.exceptions import ValidationError
-from datetime import date
 
 
 def calculate_age(dob):
-    return (date.today() - dob).days // 365 if dob else 0
+    today = timezone.now().date()
+    return (today - dob).days // 365 if dob else 0
 
 
 # ─────────────────────────────────────────────
@@ -44,7 +44,8 @@ class StaffProfile(models.Model):
     def clean(self):
         # Only validate fields that are set
         if self.date_of_birth:
-            if self.date_of_birth > date.today():
+            today = timezone.now().date()
+            if self.date_of_birth > today:
                 raise ValidationError({"date_of_birth": "DOB cannot be in the future."})
             role_min_age = {
                 "Doctor": 25, "Receptionist": 21,
@@ -64,7 +65,7 @@ class StaffProfile(models.Model):
             if self.salary > 1_000_000:
                 raise ValidationError({"salary": "Salary exceeds the allowed limit."})
 
-        if self.joining_date and self.joining_date > date.today():
+        if self.joining_date and self.joining_date > timezone.now().date():
             raise ValidationError({"joining_date": "Joining date cannot be in the future."})
 
     def save(self, *args, **kwargs):
