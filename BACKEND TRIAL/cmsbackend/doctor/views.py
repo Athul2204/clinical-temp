@@ -956,3 +956,35 @@ class CreatePrescriptionView(APIView):
                 status=status.HTTP_201_CREATED,
             )
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+from labtechnician.models import LabTest
+from rest_framework.generics import ListAPIView
+from rest_framework.permissions import IsAuthenticated
+from rest_framework import serializers
+
+class LabTestSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = LabTest
+        fields = ["test_id", "test_name"]
+
+class LabTestListView(ListAPIView):
+    queryset = LabTest.objects.all()
+    serializer_class = LabTestSerializer
+    permission_classes = [IsAuthenticated]
+
+from pharmacist.models import Medicine
+from rest_framework.permissions import IsAuthenticated
+
+class MedicineListView(APIView):
+    permission_classes = [IsDoctor]   # or IsAuthenticated
+
+    def get(self, request):
+        medicines = Medicine.objects.all().order_by("name")
+        data = [
+            {
+                "id": m.medicine_id,
+                "name": m.name
+            }
+            for m in medicines
+        ]
+        return Response(data, status=status.HTTP_200_OK)

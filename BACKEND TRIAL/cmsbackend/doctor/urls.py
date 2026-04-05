@@ -8,6 +8,8 @@ from .views import (
     MarkLabResultsViewedView,
     CompleteConsultationView,
     CreatePrescriptionView,
+    LabTestListView,
+    MedicineListView
 )
 
 
@@ -54,4 +56,10 @@ urlpatterns = [
         CreatePrescriptionView.as_view(),
         name="create-prescription"
     ),
+    path(
+    "lab-tests/",
+    LabTestListView.as_view(),
+    name="lab-tests"
+),
+path("medicines/", MedicineListView.as_view(), name="medicine-list"),
 ]

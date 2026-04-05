@@ -332,3 +332,8 @@ class LabResultViewSerializer(serializers.ModelSerializer):
             "is_critical",
             "created_at",
         ]
+
+class MedicineListSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Medicine
+        fields = ["medicine_id", "name"]
