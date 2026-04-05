@@ -1,3 +1,5 @@
+import re
+
 from rest_framework import serializers
 from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
@@ -17,6 +19,42 @@ ROLE_MIN_AGE = {
     "Pharmacist": 23,
     "Admin": 21
 }
+
+# pattern, error message
+ROLE_QUALIFICATION_RULES = {
+    "Doctor": (
+        r"\bMBBS\b",
+        "Doctor must have MBBS as a compulsory qualification.",
+    ),
+    "Pharmacist": (
+        r"\bB\.?\s?Pharm\b",
+        "Pharmacist must have B.Pharm as a compulsory qualification.",
+    ),
+    "Lab Technician": (
+        r"\b(MIT|BMLT|DMLT|BSc\s?MLT|B\.Sc\s?MLT|MLT)\b",
+        "Lab Technician must have a minimum qualification of MIT "
+        "(or equivalent: DMLT, BMLT, BSc MLT).",
+    ),
+    "Receptionist": (
+        r"\b(BA|B\.A|BBA|B\.B\.A|BCom|B\.Com|BCOM|BCA|B\.C\.A|BSc|B\.Sc|BHM|B\.H\.M)\b",
+        "Receptionist must have a minimum 3-year degree "
+        "(BA, BBA, BCom, BCA, BSc, or equivalent).",
+    ),
+}
+
+
+def validate_qualification_for_role(role, qualification):
+    """
+    Raise serializers.ValidationError if the qualification does not
+    meet the minimum requirement for the given role.
+    Does nothing for roles without a rule (e.g. Admin).
+    """
+    rule = ROLE_QUALIFICATION_RULES.get(role)
+    if not rule:
+        return
+    pattern, message = rule
+    if not re.search(pattern, qualification or "", re.IGNORECASE):
+        raise serializers.ValidationError({"qualification": message})
 
 def calculate_age(dob):
     if not dob:
@@ -100,6 +138,8 @@ class StaffProfileSerializer(serializers.ModelSerializer):
                 "date_of_birth": f"{role} must be at least {ROLE_MIN_AGE.get(role, 21)} years old."
             })
 
+        validate_qualification_for_role(role, validated_data.get("qualification", ""))
+
         return StaffProfile.objects.create(user=user, **validated_data)
 
     @transaction.atomic
@@ -117,6 +157,9 @@ class StaffProfileSerializer(serializers.ModelSerializer):
                 "date_of_birth": f"{role} must be at least {ROLE_MIN_AGE.get(role, 21)} years old."
             })
 
+        qualification = validated_data.get("qualification", instance.qualification)
+        validate_qualification_for_role(role, qualification)
+
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
 
@@ -124,10 +167,7 @@ class StaffProfileSerializer(serializers.ModelSerializer):
         return instance
 
 
-# ─── ROLE SERIALIZERS (FINAL FIX) ─────────────────────────
-# ✅ SHOW staff details
-# ❌ DO NOT allow updating staff
-
+# ─── ROLE SERIALIZERS ─────────────────────────────────────
 class DoctorProfileSerializer(serializers.ModelSerializer):
     staff = StaffProfileSerializer(read_only=True)
 
@@ -162,7 +202,18 @@ class PharmacistProfileSerializer(serializers.ModelSerializer):
 
 # ─── AUDIT LOG SERIALIZER ────────────────────────────────
 class AuditLogSerializer(serializers.ModelSerializer):
-    user_name = serializers.CharField(source='user.username', read_only=True)
+    # FIX 2: Expose username as a plain string field called 'user'.
+    # The old code had a separate `user_name` field, but the `user` field
+    # still serialized as the raw FK integer — so AuditLogs.jsx showed
+    # integers (e.g. "1") instead of the username.
+    # Overriding `user` as a SerializerMethodField returns the username
+    # string directly under the key the frontend already reads.
+    user = serializers.SerializerMethodField()
+
+    def get_user(self, obj):
+        if obj.user:
+            return obj.user.username
+        return "system"
 
     class Meta:
         model = AuditLog

@@ -2,9 +2,8 @@
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework_simplejwt.views import TokenObtainPairView
-from rest_framework_simplejwt.views import TokenRefreshView
 from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
+from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.views import APIView
 
@@ -19,10 +18,16 @@ REFRESH_COOKIE = "refresh_token"
 COOKIE_OPTS = dict(httponly=True, secure=False, samesite="Lax")
 # Set secure=True in production (HTTPS). False here for local dev.
 
+# FIX 3: Lifetimes must match SIMPLE_JWT settings exactly.
+# Old code had ACCESS max_age=5*60 (5 min) while the JWT lived 60 min —
+# the cookie expired before the token, causing instant 401s after 5 min.
+ACCESS_MAX_AGE  = 60 * 60        # 60 minutes  — matches ACCESS_TOKEN_LIFETIME
+REFRESH_MAX_AGE = 24 * 60 * 60  # 24 hours    — matches REFRESH_TOKEN_LIFETIME
+
 
 def _set_auth_cookies(response, access, refresh):
-    response.set_cookie(ACCESS_COOKIE,  access,  max_age=5 * 60,         **COOKIE_OPTS)
-    response.set_cookie(REFRESH_COOKIE, refresh, max_age=24 * 60 * 60,   **COOKIE_OPTS)
+    response.set_cookie(ACCESS_COOKIE,  access,  max_age=ACCESS_MAX_AGE,  **COOKIE_OPTS)
+    response.set_cookie(REFRESH_COOKIE, refresh, max_age=REFRESH_MAX_AGE, **COOKIE_OPTS)
 
 
 def _clear_auth_cookies(response):
@@ -60,8 +65,11 @@ class LoginView(TokenObtainPairView):
 class CookieTokenRefreshView(APIView):
     """
     POST /api/auth/refresh/
-    Reads refresh token from HttpOnly cookie, returns new access cookie.
+    Reads refresh token from HttpOnly cookie, issues new access cookie.
+    No authentication required — the refresh token IS the credential.
     """
+    permission_classes = []  # intentionally public; refresh token is the auth
+
     def post(self, request, *args, **kwargs):
         refresh_token = request.COOKIES.get(REFRESH_COOKIE)
         if not refresh_token:
@@ -76,7 +84,8 @@ class CookieTokenRefreshView(APIView):
             return Response({"detail": str(e)}, status=status.HTTP_401_UNAUTHORIZED)
 
         response = Response({"detail": "Token refreshed."}, status=status.HTTP_200_OK)
-        response.set_cookie(ACCESS_COOKIE, new_access, max_age=5 * 60, **COOKIE_OPTS)
+        # FIX 3: use ACCESS_MAX_AGE constant (60 min), not the old 5 min
+        response.set_cookie(ACCESS_COOKIE, new_access, max_age=ACCESS_MAX_AGE, **COOKIE_OPTS)
         return response
 
 
@@ -85,7 +94,7 @@ class MeView(APIView):
     """
     GET /api/auth/me/
     Returns logged-in user profile from the HttpOnly cookie session.
-    React AuthContext calls this on mount to restore state after refresh.
+    React AuthContext calls this on mount to restore state after page refresh.
     """
     permission_classes = [IsAuthenticated]
 
