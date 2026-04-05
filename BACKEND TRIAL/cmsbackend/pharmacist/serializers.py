@@ -11,7 +11,13 @@ from .models import (
     Dispense, DispenseItem, MedicineBill
 )
 
-
+def get_prescribed_qty(p_item):
+    try:
+        freq = int(p_item.frequency)
+    except (TypeError, ValueError):
+        freq = 1
+    duration = p_item.duration or 1
+    return freq * duration
 # ==============================
 # PATIENT MINI SERIALIZER
 # ==============================
@@ -296,7 +302,11 @@ class DispenseSerializer(serializers.ModelSerializer):
 #    finalised and medicines handed to the patient (enforced in DispenseSerializer).
 class MedicineBillSerializer(serializers.ModelSerializer):
     patient_details = serializers.SerializerMethodField(read_only=True)
-    items = DispenseItemSerializer(source='dispense.items', many=True, read_only=True)
+    #items = DispenseItemSerializer(source='dispense.items', many=True, read_only=True)
+    doctor_name = serializers.SerializerMethodField()
+    items = serializers.SerializerMethodField()
+    bill_note = serializers.SerializerMethodField()
+    dispense_date = serializers.DateTimeField(source='dispense.dispense_date', read_only=True)
     prescription_code = serializers.CharField(
         source='dispense.prescription.prescription_code', read_only=True
     )
@@ -313,7 +323,11 @@ class MedicineBillSerializer(serializers.ModelSerializer):
             'created_at',
             'patient_details',
             'prescription_code',
-            'items'
+            # 'items'
+            'doctor_name',
+            'dispense_date',
+            'items',
+            'bill_note'
         ]
         read_only_fields = ['bill_id', 'final_amount', 'created_at']
 
@@ -325,7 +339,72 @@ class MedicineBillSerializer(serializers.ModelSerializer):
             'last_name': patient.last_name,
             'full_name': f"{patient.first_name} {patient.last_name}"
         }
+    def get_items(self, obj):
+        dispense = obj.dispense
+        prescription = dispense.prescription
 
+        prescription_items = prescription.items.select_related("medicine_name")
+        dispense_items = dispense.items.select_related("batch__medicine")
+
+        result = []
+
+        for p_item in prescription_items:
+            medicine = p_item.medicine_name
+
+            # calculate prescribed quantity
+            try:
+                freq = int(p_item.frequency)
+            except:
+                freq = 1
+            duration = p_item.duration or 1
+            prescribed_qty = freq * duration
+
+            # get dispensed items for this medicine
+            matching_dispense = [
+                d for d in dispense_items
+                if d.batch.medicine_id == medicine.medicine_id
+            ]
+
+            dispensed_qty = sum(d.quantity for d in matching_dispense)
+            remaining_qty = max(prescribed_qty - dispensed_qty, 0)
+
+            line_total = sum(d.quantity * d.price for d in matching_dispense)
+            batch_numbers = [d.batch.batch_number for d in matching_dispense]
+
+            is_partial = remaining_qty > 0
+
+            note = ""
+            if is_partial:
+                note = (
+                    f"Only {dispensed_qty} unit(s) were available. "
+                    f"Please purchase remaining {remaining_qty} unit(s) from another pharmacy."
+                )
+
+            result.append({
+                "medicine_name": medicine.name,
+                "batch_numbers": batch_numbers,
+                "dosage": p_item.dosage,
+                "instructions": p_item.instructions or "",
+                "prescribed_quantity": prescribed_qty,
+                "dispensed_quantity": dispensed_qty,
+                "remaining_quantity": remaining_qty,
+                "unit_price": medicine.price,
+                "line_total": line_total,
+                "is_partial": is_partial,
+                "note": note
+            })
+
+        return result
+    def get_doctor_name(self, obj):
+        doctor = obj.dispense.prescription.doctor
+        return str(doctor)
+    def get_bill_note(self, obj):
+        items = self.get_items(obj)
+
+        if any(item["is_partial"] for item in items):
+            return "Some medicines were not fully available in our pharmacy."
+
+        return ""
     def validate(self, data):
         dispense = data.get('dispense')
         total = data.get('total_amount')
