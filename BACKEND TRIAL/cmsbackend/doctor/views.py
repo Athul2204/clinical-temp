@@ -603,7 +603,10 @@ from .serializers import (
 def get_logged_in_doctor(request):
     try:
         return request.user.staff_profile.doctor_profile
-    except AttributeError:
+    except Exception:
+        # Catches both AttributeError AND RelatedObjectDoesNotExist
+        # (Django raises RelatedObjectDoesNotExist — not AttributeError —
+        # when StaffProfile exists but DoctorProfile row is missing)
         return None
 
 
