@@ -106,6 +106,14 @@ class MeView(APIView):
             if staff_profile
             else "admin"
         )
+
+        # Include doctor_id so the frontend can send it in lab/prescription requests
+        doctor_id = None
+        if staff_profile:
+            doctor_profile = getattr(staff_profile, "doctor_profile", None)
+            if doctor_profile:
+                doctor_id = doctor_profile.doctor_id
+
         return Response({
             "id":         user.id,
             "username":   user.username,
@@ -114,6 +122,7 @@ class MeView(APIView):
             "email":      user.email,
             "is_staff":   user.is_staff,
             "role":       role,
+            "doctor_id":  doctor_id,
         })
 
 
