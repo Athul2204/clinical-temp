@@ -11,13 +11,49 @@ from .models import (
     Dispense, DispenseItem, MedicineBill
 )
 
+# def get_prescribed_qty(p_item):
+#     try:
+#         freq = int(p_item.frequency)
+#     except (TypeError, ValueError):
+#         freq = 1
+#     duration = p_item.duration or 1
+#     return freq * duration
+import re
 def get_prescribed_qty(p_item):
-    try:
-        freq = int(p_item.frequency)
-    except (TypeError, ValueError):
-        freq = 1
+    MAX_DISPENSE_DAYS = 30
+
+    match = re.search(r'\d+', p_item.frequency or "")
+    freq = int(match.group()) if match else 1
+
     duration = p_item.duration or 1
-    return freq * duration
+    allowed_duration = min(duration, MAX_DISPENSE_DAYS)
+
+    return freq * allowed_duration
+# def get_prescribed_qty_and_days(p_item):
+#     MAX_DISPENSE_DAYS = 30
+
+#     match = re.search(r'\d+', p_item.frequency or "")
+#     freq = int(match.group()) if match else 1
+
+#     original_duration = p_item.duration or 1
+#     allowed_duration = min(original_duration, MAX_DISPENSE_DAYS)
+#     prescribed_qty = freq * allowed_duration
+
+#     return {
+#         "frequency_per_day": freq,
+#         "original_duration": original_duration,
+#         "allowed_duration": allowed_duration,
+#         "prescribed_qty": prescribed_qty,
+#         "is_limited": original_duration > MAX_DISPENSE_DAYS,
+#     }
+# def get_prescribed_qty(p_item):
+#     # Extract number from frequency string
+#     match = re.search(r'\d+', p_item.frequency or "")
+#     freq = int(match.group()) if match else 1
+
+#     duration = p_item.duration or 1
+
+#     return freq * duration
 # ==============================
 # PATIENT MINI SERIALIZER
 # ==============================
